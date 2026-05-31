@@ -1,0 +1,15 @@
+fastapi==0.136.3
+uvicorn[standard]==0.32.1
+crewai==1.14.6
+crewai-tools==1.14.6
+pydantic==2.12.5
+pydantic-settings==2.10.1
+python-dotenv==1.2.2
+httpx==0.28.1
+sqlalchemy==2.0.50
+aiosqlite==0.21.0
+alembic==1.18.4
+greenlet==3.5.1
+anthropic>=0.40.0
+PyJWT>=2.9.0
+bcrypt>=4.0.0

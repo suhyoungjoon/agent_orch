@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+.next/
+out/
+.cache/
+
+# Build artifacts
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
