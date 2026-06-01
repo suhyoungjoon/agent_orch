@@ -8,7 +8,6 @@ import { CheckCircle, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp } from "
 export default function ApprovalQueue() {
   const { data: session } = useSession();
   const [runs, setRuns] = useState<PendingRun[]>([]);
-  const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
   const isAdmin = session?.user?.role === "admin";

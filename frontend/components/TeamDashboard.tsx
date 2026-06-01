@@ -10,7 +10,7 @@ import {
   RunLog,
 } from "@/lib/api";
 import {
-  Bot, Users, Play, CheckCircle, XCircle, Zap,
+  Bot, Users, Play, Zap,
   DollarSign, RefreshCw, Loader2, Clock, TrendingUp,
 } from "lucide-react";
 

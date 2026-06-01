@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { api, Agent, SynergyCandidate, SynergyResponse } from "@/lib/api";
 import {
-  X, Zap, Loader2, GitFork, ArrowDown, ArrowUp,
-  GitMerge, Sparkles, ChevronRight,
+  X, Zap, Loader2, ArrowDown, ArrowUp,
+  GitMerge, Sparkles,
 } from "lucide-react";
 
 const ROLE_COLOR: Record<string, string> = {
