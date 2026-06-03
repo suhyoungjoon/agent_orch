@@ -1,7 +1,12 @@
+from __future__ import annotations
 from datetime import datetime, timezone
-from sqlalchemy.orm import Mapped, mapped_column
+from typing import TYPE_CHECKING, List
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, DateTime
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.agent_orm import AgentORM
 
 
 class TeamORM(Base):
@@ -13,4 +18,8 @@ class TeamORM(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+    agents: Mapped[List["AgentORM"]] = relationship(
+        "AgentORM", back_populates="team", lazy="selectin"
     )

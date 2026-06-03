@@ -244,6 +244,109 @@ export interface ParseIntentResult {
   is_mock: boolean;
 }
 
+// ── 6대 거버넌스 갭 타입 ────────────────────────────────────────────
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  actor_type: "user" | "agent" | "system";
+  actor_id: string | null;
+  actor_name: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  resource_name: string | null;
+  outcome: "success" | "failure" | "blocked";
+  risk_level: "low" | "medium" | "high" | "critical";
+  team_id: string | null;
+  eu_ai_act_relevant: boolean;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface AuditSummary {
+  total: number;
+  by_risk_level: { low: number; medium: number; high: number; critical: number };
+  eu_ai_act_relevant: number;
+  compliance_status: string;
+}
+
+export interface Credential {
+  id: string;
+  agent_id: string;
+  key_prefix: string;
+  scopes: string[];
+  is_active: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface AnomalyEvent {
+  id: string;
+  agent_id: string;
+  run_id: string | null;
+  team_id: string | null;
+  detected_at: string;
+  anomaly_type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  score: number;
+  baseline_value: number | null;
+  observed_value: number | null;
+  description: string | null;
+  claude_analysis: string | null;
+  claude_recommendation: string | null;
+  status: "open" | "acknowledged" | "resolved" | "false_positive";
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+}
+
+export interface A2AChain {
+  id: string;
+  root_run_id: string;
+  parent_run_id: string | null;
+  child_run_id: string | null;
+  caller_agent_id: string;
+  callee_agent_id: string;
+  delegated_scopes: string[] | null;
+  depth: number;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  team_id: string | null;
+  input_summary: string | null;
+  output_summary: string | null;
+}
+
+export interface ROISnapshot {
+  id: string;
+  team_id: string;
+  period: string;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  success_rate: number;
+  total_agents_used: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  estimated_cost_usd: number;
+  avg_duration_ms: number | null;
+  estimated_hours_saved: number;
+  cost_per_successful_task_usd: number | null;
+  roi_multiplier: number | null;
+  top_agents: { agent_id: string; runs: number; success_rate: number }[];
+  agent_sprawl_count: number;
+  claude_insights: string | null;
+  claude_recommendations: { priority: string; action: string }[];
+  updated_at: string;
+}
+
+export interface SprawlReport {
+  shadow_agents: { id: string; name: string; role: string; usage_count: number }[];
+  stale_agents: { id: string; name: string; team_id: string | null; usage_count: number }[];
+  risky_agents: { id: string; name: string; team_id: string | null; success_rate: number; usage_count: number }[];
+  summary: { shadow_count: number; stale_count: number; risky_count: number; total_risk: number };
+}
+
 export const api = {
   getAgents: () => request<Agent[]>("/api/v1/agents/"),
   getAgent: (id: string) => request<Agent>(`/api/v1/agents/${id}`),
@@ -319,5 +422,83 @@ export const api = {
     if (opts?.limit) q.set("limit", String(opts.limit));
     if (opts?.useClaude) q.set("use_claude", "true");
     return request<SynergyResponse>(`/api/v1/agents/${agentId}/synergy?${q}`, undefined, token);
+  },
+
+  // ── 감사 추적 ──────────────────────────────────────────────────────
+  getAuditLogs: (params: { team_id?: string; risk_level?: string; eu_only?: boolean; limit?: number } = {}, token?: string) => {
+    const q = new URLSearchParams();
+    if (params.team_id) q.set("team_id", params.team_id);
+    if (params.risk_level) q.set("risk_level", params.risk_level);
+    if (params.eu_only) q.set("eu_only", "true");
+    if (params.limit) q.set("limit", String(params.limit));
+    return request<AuditLog[]>(`/api/v1/audit/?${q}`, undefined, token);
+  },
+  getAuditSummary: (team_id?: string, token?: string) => {
+    const q = team_id ? `?team_id=${team_id}` : "";
+    return request<AuditSummary>(`/api/v1/audit/summary${q}`, undefined, token);
+  },
+
+  // ── 에이전트 자격증명 ────────────────────────────────────────────
+  getCredentials: (agentId: string, token?: string) =>
+    request<Credential[]>(`/api/v1/agents/${agentId}/credentials`, undefined, token),
+  createCredential: (agentId: string, scopes: string[], token?: string) =>
+    request<Credential & { raw_key: string; warning: string }>(
+      `/api/v1/agents/${agentId}/credentials`,
+      { method: "POST", body: JSON.stringify({ scopes }) },
+      token
+    ),
+  revokeCredential: (agentId: string, credId: string, token?: string) =>
+    request<{ message: string; revoked_at: string }>(
+      `/api/v1/agents/${agentId}/credentials/${credId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  // ── 이상 행동 ────────────────────────────────────────────────────
+  getAnomalies: (params: { team_id?: string; status?: string; severity?: string } = {}, token?: string) => {
+    const q = new URLSearchParams();
+    if (params.team_id) q.set("team_id", params.team_id);
+    if (params.status) q.set("status", params.status);
+    if (params.severity) q.set("severity", params.severity);
+    return request<AnomalyEvent[]>(`/api/v1/anomalies/?${q}`, undefined, token);
+  },
+  resolveAnomaly: (id: string, status: string, note?: string, token?: string) =>
+    request<AnomalyEvent>(
+      `/api/v1/anomalies/${id}/resolve`,
+      { method: "PATCH", body: JSON.stringify({ status, note }) },
+      token
+    ),
+
+  // ── A2A 체인 ────────────────────────────────────────────────────
+  getA2AChains: (params: { team_id?: string; agent_id?: string } = {}, token?: string) => {
+    const q = new URLSearchParams();
+    if (params.team_id) q.set("team_id", params.team_id);
+    if (params.agent_id) q.set("agent_id", params.agent_id);
+    return request<A2AChain[]>(`/api/v1/a2a/chains?${q}`, undefined, token);
+  },
+  getA2AChainTree: (rootRunId: string, token?: string) =>
+    request<{ root_run_id: string; chain_count: number; max_depth: number; chains: A2AChain[] }>(
+      `/api/v1/a2a/chains/tree/${rootRunId}`,
+      undefined,
+      token
+    ),
+
+  // ── ROI / 스프롤 ─────────────────────────────────────────────────
+  getROI: (team_id?: string, period?: string, refresh?: boolean, token?: string) => {
+    const q = new URLSearchParams();
+    if (team_id) q.set("team_id", team_id);
+    if (period) q.set("period", period);
+    if (refresh) q.set("refresh", "true");
+    return request<ROISnapshot>(`/api/v1/roi/?${q}`, undefined, token);
+  },
+  getROIHistory: (team_id?: string, months?: number, token?: string) => {
+    const q = new URLSearchParams();
+    if (team_id) q.set("team_id", team_id);
+    if (months) q.set("months", String(months));
+    return request<ROISnapshot[]>(`/api/v1/roi/history?${q}`, undefined, token);
+  },
+  getSprawl: (team_id?: string, token?: string) => {
+    const q = team_id ? `?team_id=${team_id}` : "";
+    return request<SprawlReport>(`/api/v1/roi/sprawl${q}`, undefined, token);
   },
 };

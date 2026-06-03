@@ -8,6 +8,11 @@ from .auth import router as auth_router
 from .teams import router as teams_router
 from .dashboard import router as dashboard_router
 from .reports import router as reports_router
+from .audit import router as audit_router
+from .credentials import router as credentials_router
+from .anomalies import router as anomalies_router
+from .a2a import router as a2a_router
+from .roi import router as roi_router
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_router)
@@ -19,3 +24,9 @@ v1_router.include_router(parse_intent_router)
 v1_router.include_router(teams_router)
 v1_router.include_router(dashboard_router)
 v1_router.include_router(reports_router)
+# 6대 거버넌스 갭
+v1_router.include_router(audit_router)
+v1_router.include_router(credentials_router)
+v1_router.include_router(anomalies_router)
+v1_router.include_router(a2a_router)
+v1_router.include_router(roi_router)

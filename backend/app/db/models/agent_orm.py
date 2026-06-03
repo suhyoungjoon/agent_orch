@@ -1,5 +1,5 @@
-from sqlalchemy import String, Float, Integer, JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Float, Integer, JSON, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
@@ -14,8 +14,10 @@ class AgentORM(Base):
     status: Mapped[str] = mapped_column(String, default="idle")
     description: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # 팀 기능 (2단계): ForeignKey("teams.id") 추가 마이그레이션만으로 전환
-    team_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    team: Mapped["TeamORM | None"] = relationship("TeamORM", back_populates="agents", lazy="selectin")
 
     # 공개/팀/비공개 ("public" | "team" | "private")
     visibility: Mapped[str] = mapped_column(String, default="team", index=True)

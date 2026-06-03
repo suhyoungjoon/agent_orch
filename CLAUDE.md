@@ -321,6 +321,43 @@ npm run dev                   # http://localhost:3000
   - `AgentCard.tsx` — "승인 후 실행" 체크박스, `pending_approval` 상태 배지
   - `app/page.tsx` — 메인 페이지 최상단에 `<ApprovalQueue />` 배치
 
+### 완료 (추가)
+- [x] `agents.team_id` FK 제약 (Alembic 0009) — `ForeignKey("teams.id", ondelete="SET NULL")`, batch_alter_table로 SQLite 재생성
+
+### 완료 (6대 거버넌스 갭 — 2026-06-03)
+- [x] **거버넌스·감사 추적** (Alembic 0010) — `audit_logs` 불변 테이블, EU AI Act 관련 플래그, 위험 수준 자동 분류, HTTP 미들웨어 자동 기록
+- [x] **에이전트 신원·권한** (Alembic 0011) — `agent_credentials` 테이블, bcrypt API 키 발급·폐기, 스코프 9종, A2A 위임 지원
+- [x] **이상 행동 감지** (Alembic 0012) — `anomaly_events` 테이블, 3종 탐지 규칙(토큰급증·실패율·실행빈도), Claude API 심층 분석
+- [x] **에이전트 간 통신 A2A** (Alembic 0013) — `a2a_chains` 테이블, 위임 토큰, 체인 깊이 5단계 제한, 스코프 교집합 위임
+- [x] **ROI 측정** (Alembic 0014) — `roi_snapshots` 테이블, 비용·절감시간·ROI배수 계산, Claude 인사이트·권고사항
+- [x] **섀도우 AI·스프롤** — `sprawl_service.py`, 팀 미배정·방치·고위험 에이전트 탐지
+
+#### 새 API 엔드포인트 (15개)
+| 경로 | 설명 |
+|------|------|
+| `GET /api/v1/audit/` | 감사 로그 조회 (EU AI Act 필터) |
+| `GET /api/v1/audit/summary` | 위험 수준별 집계 + 준수 현황 |
+| `POST /api/v1/agents/{id}/credentials` | 에이전트 API 키 발급 |
+| `GET /api/v1/agents/{id}/credentials` | 자격증명 목록 |
+| `DELETE /api/v1/agents/{id}/credentials/{cid}` | 자격증명 폐기 |
+| `GET /api/v1/anomalies/` | 이상 이벤트 목록 |
+| `GET /api/v1/anomalies/stats` | 심각도·상태별 집계 |
+| `PATCH /api/v1/anomalies/{id}/resolve` | 이상 해결·오탐 처리 |
+| `POST /api/v1/a2a/chains` | A2A 호출 체인 등록 |
+| `PATCH /api/v1/a2a/chains/{id}/complete` | 체인 완료 기록 |
+| `GET /api/v1/a2a/chains` | 체인 목록 |
+| `GET /api/v1/a2a/chains/tree/{root_run_id}` | 루트 기준 전체 트리 |
+| `GET /api/v1/roi/` | 월별 ROI 스냅샷 (Claude 분석) |
+| `GET /api/v1/roi/history` | N개월 ROI 추이 |
+| `GET /api/v1/roi/sprawl` | 섀도우 AI 스프롤 현황 |
+
+#### 새 프론트엔드 페이지
+| 경로 | 내용 |
+|------|------|
+| `/governance` | 감사 로그 테이블 + EU AI Act 배너 + 위험 필터 |
+| `/security` | 이상 탐지 목록 + Claude 분석 해결 모달 + 스프롤 현황 |
+| `/a2a` | A2A 체인 트리 시각화 + 위임 스코프 표시 |
+| `/roi` | ROI KPI 카드 + Claude 인사이트 + 월별 추이 바 차트 |
+
 ### 다음에 할 일
-- [ ] `agents.team_id`에 `ForeignKey("teams.id")` FK 제약 (Alembic 0009)
 - [ ] 모바일 알림 / FCM 연동

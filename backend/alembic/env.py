@@ -11,7 +11,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
 from app.db.base import Base
-import app.db.models.agent_orm  # noqa: F401 — Base.metadata에 ORM 등록
+import app.db.models.agent_orm           # noqa: F401
+import app.db.models.team_orm            # noqa: F401
+import app.db.models.user_orm            # noqa: F401
+import app.db.models.run_orm             # noqa: F401
+import app.db.models.workflow_orm        # noqa: F401
+import app.db.models.audit_log_orm       # noqa: F401
+import app.db.models.agent_credential_orm  # noqa: F401
+import app.db.models.anomaly_event_orm   # noqa: F401
+import app.db.models.a2a_chain_orm       # noqa: F401
+import app.db.models.roi_snapshot_orm    # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
