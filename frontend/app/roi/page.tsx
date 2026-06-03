@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
-import { api, ROISnapshot, SprawlReport } from "@/lib/api";
+import { api, ROISnapshot } from "@/lib/api";
 
 const PRIORITY_COLOR: Record<string, string> = {
   high:   "bg-red-50 border-red-200 text-red-800",
@@ -12,7 +12,7 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export default function ROIPage() {
   const { data: session } = useSession();
-  const token = (session as any)?.accessToken;
+  const token = (session as { accessToken?: string } | null)?.accessToken;
 
   const [snapshot, setSnapshot] = useState<ROISnapshot | null>(null);
   const [history, setHistory] = useState<ROISnapshot[]>([]);

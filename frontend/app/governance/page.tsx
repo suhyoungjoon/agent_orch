@@ -19,7 +19,7 @@ const OUTCOME_COLOR: Record<string, string> = {
 
 export default function GovernancePage() {
   const { data: session } = useSession();
-  const token = (session as any)?.accessToken;
+  const token = (session as { accessToken?: string } | null)?.accessToken;
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [summary, setSummary] = useState<AuditSummary | null>(null);

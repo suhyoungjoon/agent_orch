@@ -28,7 +28,7 @@ const ANOMALY_LABELS: Record<string, string> = {
 
 export default function SecurityPage() {
   const { data: session } = useSession();
-  const token = (session as any)?.accessToken;
+  const token = (session as { accessToken?: string } | null)?.accessToken;
 
   const [anomalies, setAnomalies] = useState<AnomalyEvent[]>([]);
   const [sprawl, setSprawl] = useState<SprawlReport | null>(null);
@@ -101,7 +101,7 @@ export default function SecurityPage() {
           ].map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id as any)}
+              onClick={() => setTab(t.id as "anomaly" | "sprawl" | "credentials")}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.id ? "border-gray-900 text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
@@ -230,7 +230,7 @@ export default function SecurityPage() {
             <p className="font-medium text-gray-600">에이전트 자격증명 관리</p>
             <p className="text-sm mt-1">에이전트 목록에서 개별 에이전트를 선택한 후 자격증명을 발급하세요.</p>
             <p className="text-xs mt-2 font-mono bg-gray-50 p-2 rounded">
-              POST /api/v1/agents/{"{"id{"}"}/credentials
+              POST /api/v1/agents/{"{id}"}/credentials
             </p>
             <div className="mt-4 text-left max-w-sm mx-auto">
               <p className="text-sm font-medium text-gray-700 mb-2">사용 가능한 스코프</p>

@@ -15,7 +15,7 @@ const STATUS_DOT: Record<string, string> = {
 
 export default function A2APage() {
   const { data: session } = useSession();
-  const token = (session as any)?.accessToken;
+  const token = (session as { accessToken?: string } | null)?.accessToken;
 
   const [chains, setChains] = useState<A2AChain[]>([]);
   const [loading, setLoading] = useState(true);
