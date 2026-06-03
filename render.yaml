@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: agentflow-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install --no-cache-dir --prefer-binary -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./agentflow.db
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://agentflow-frontend.onrender.com
