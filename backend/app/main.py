@@ -5,13 +5,13 @@ from app.api.v1 import v1_router
 from app.core.config import settings
 from app.core.database import engine, AsyncSessionLocal
 from app.db.base import Base
-import app.db.models.agent_orm          # noqa: F401
-import app.db.models.run_orm            # noqa: F401
-import app.db.models.team_orm           # noqa: F401
+import app.db.models.team_orm           # noqa: F401  — teams 테이블 먼저 등록
 import app.db.models.user_orm           # noqa: F401
+import app.db.models.agent_orm          # noqa: F401  — ForeignKey("teams.id") 의존
+import app.db.models.run_orm            # noqa: F401
 import app.db.models.workflow_orm       # noqa: F401
 import app.db.models.audit_log_orm      # noqa: F401
-import app.db.models.agent_credential_orm  # noqa: F401
+import app.db.models.agent_credential_orm  # noqa: F401  — ForeignKey("agents.id") 의존
 import app.db.models.anomaly_event_orm  # noqa: F401
 import app.db.models.a2a_chain_orm      # noqa: F401
 import app.db.models.roi_snapshot_orm   # noqa: F401
