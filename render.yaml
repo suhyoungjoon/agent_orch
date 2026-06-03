@@ -3,7 +3,7 @@ services:
     name: agentflow-backend
     runtime: python
     rootDir: backend
-    buildCommand: pip install --no-cache-dir --prefer-binary -r requirements-render.txt
+    buildCommand: pip install --no-cache-dir --prefer-binary -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION

@@ -4,19 +4,19 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-_SAMPLE_MAX = 500
-
-try:
-    from crewai import Agent, Task, Crew, LLM
-    _CREWAI_AVAILABLE = True
-except ImportError:
-    _CREWAI_AVAILABLE = False
+from openai import AsyncOpenAI
 
 from app.models.run import RunResponse, RunStatus
 from app.core.database import AsyncSessionLocal
 from app.core import pubsub
 from app.db.repositories.agent_repo import AgentRepository
 from app.db.repositories.run_repo import RunRepository
+
+_SAMPLE_MAX = 500
+
+
+def _make_client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 async def execute_agent(
@@ -67,7 +67,7 @@ async def execute_agent(
     await pubsub.publish_run(run_id, run_response.model_dump(mode="json"))
 
     if not require_approval:
-        asyncio.create_task(_run_crew(run_id, agent_def, task, context, model_name))
+        asyncio.create_task(_run_openai(run_id, agent_def, task, context, model_name))
 
     return run_response
 
@@ -86,10 +86,10 @@ async def start_approved_run(run_id: str) -> None:
         task = run_orm.task
         context = run_orm.context
 
-    asyncio.create_task(_run_crew(run_id, agent_def, task, context, model_name))
+    asyncio.create_task(_run_openai(run_id, agent_def, task, context, model_name))
 
 
-async def _run_crew(
+async def _run_openai(
     run_id: str,
     agent_def,
     task: str,
@@ -100,46 +100,26 @@ async def _run_crew(
     input_tokens = 0
     output_tokens = 0
 
-    if not _CREWAI_AVAILABLE:
-        async with AsyncSessionLocal() as session:
-            run_repo = RunRepository(session)
-            await run_repo.fail(run_id, "CrewAI가 이 환경에 설치되지 않았습니다. OPENAI_API_KEY 설정 후 로컬에서 실행하세요.")
-            await session.commit()
-            updated = await run_repo.get_by_id(run_id)
-        if updated:
-            await pubsub.publish_run(run_id, RunResponse.model_validate(updated).model_dump(mode="json"))
-        await _update_agent_stats(agent_def.id, False)
-        return
-
     try:
-        llm = LLM(model=model_name)
+        system_prompt = (
+            f"You are a {agent_def.role}.\n"
+            f"Goal: {agent_def.goal}\n"
+            f"Background: {agent_def.backstory}"
+        )
+        user_message = task if not context else f"{task}\n\nContext: {context}"
 
-        agent = Agent(
-            role=agent_def.role,
-            goal=agent_def.goal,
-            backstory=agent_def.backstory,
-            llm=llm,
-            verbose=False,
+        client = _make_client()
+        response = await client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
         )
 
-        task_description = task if not context else f"{task}\n\nContext: {context}"
-        crew_task = Task(
-            description=task_description,
-            agent=agent,
-            expected_output="A clear, detailed response to the task.",
-        )
-        crew = Crew(agents=[agent], tasks=[crew_task], verbose=False)
-        result = await asyncio.get_event_loop().run_in_executor(None, crew.kickoff)
-
-        try:
-            metrics = crew.usage_metrics
-            if metrics:
-                input_tokens = getattr(metrics, "prompt_tokens", 0) or 0
-                output_tokens = getattr(metrics, "completion_tokens", 0) or 0
-        except Exception:
-            pass
-
-        result_str = str(result)
+        result_str = response.choices[0].message.content or ""
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
         output_sample = result_str[:_SAMPLE_MAX]
 
         async with AsyncSessionLocal() as session:
