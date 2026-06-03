@@ -6,7 +6,12 @@ from typing import Optional
 
 _SAMPLE_MAX = 500
 
-from crewai import Agent, Task, Crew, LLM
+try:
+    from crewai import Agent, Task, Crew, LLM
+    _CREWAI_AVAILABLE = True
+except ImportError:
+    _CREWAI_AVAILABLE = False
+
 from app.models.run import RunResponse, RunStatus
 from app.core.database import AsyncSessionLocal
 from app.core import pubsub
@@ -94,6 +99,17 @@ async def _run_crew(
     succeeded = False
     input_tokens = 0
     output_tokens = 0
+
+    if not _CREWAI_AVAILABLE:
+        async with AsyncSessionLocal() as session:
+            run_repo = RunRepository(session)
+            await run_repo.fail(run_id, "CrewAI가 이 환경에 설치되지 않았습니다. OPENAI_API_KEY 설정 후 로컬에서 실행하세요.")
+            await session.commit()
+            updated = await run_repo.get_by_id(run_id)
+        if updated:
+            await pubsub.publish_run(run_id, RunResponse.model_validate(updated).model_dump(mode="json"))
+        await _update_agent_stats(agent_def.id, False)
+        return
 
     try:
         llm = LLM(model=model_name)
