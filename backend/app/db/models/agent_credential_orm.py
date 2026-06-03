@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Boolean, JSON, ForeignKey
+from sqlalchemy import String, DateTime, Boolean, JSON
 from app.db.base import Base
 
 
@@ -8,7 +8,7 @@ class AgentCredentialORM(Base):
     __tablename__ = "agent_credentials"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    agent_id: Mapped[str] = mapped_column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String, nullable=False)
     key_hash: Mapped[str] = mapped_column(String, nullable=False)
     key_prefix: Mapped[str] = mapped_column(String, nullable=False)   # "af_xxxxxx" 표시용
     scopes: Mapped[list] = mapped_column(JSON, nullable=False)         # ["run:execute","data:read"]
