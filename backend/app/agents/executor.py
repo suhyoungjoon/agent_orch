@@ -4,19 +4,17 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from openai import AsyncOpenAI
+import anthropic
 
 from app.models.run import RunResponse, RunStatus
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.core import pubsub
 from app.db.repositories.agent_repo import AgentRepository
 from app.db.repositories.run_repo import RunRepository
 
 _SAMPLE_MAX = 500
-
-
-def _make_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 async def execute_agent(
@@ -52,7 +50,7 @@ async def execute_agent(
             await session.commit()
         return run
 
-    model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    model_name = os.getenv("ANTHROPIC_MODEL", _DEFAULT_MODEL)
 
     run_id = str(uuid.uuid4())
     run_orm = await RunRepository(db).create(
@@ -67,7 +65,7 @@ async def execute_agent(
     await pubsub.publish_run(run_id, run_response.model_dump(mode="json"))
 
     if not require_approval:
-        asyncio.create_task(_run_openai(run_id, agent_def, task, context, model_name))
+        asyncio.create_task(_run_claude(run_id, agent_def, task, context, model_name))
 
     return run_response
 
@@ -82,14 +80,14 @@ async def start_approved_run(run_id: str) -> None:
             await RunRepository(session).fail(run_id, "Agent not found")
             await session.commit()
             return
-        model_name = run_orm.model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        model_name = run_orm.model or os.getenv("ANTHROPIC_MODEL", _DEFAULT_MODEL)
         task = run_orm.task
         context = run_orm.context
 
-    asyncio.create_task(_run_openai(run_id, agent_def, task, context, model_name))
+    asyncio.create_task(_run_claude(run_id, agent_def, task, context, model_name))
 
 
-async def _run_openai(
+async def _run_claude(
     run_id: str,
     agent_def,
     task: str,
@@ -108,18 +106,17 @@ async def _run_openai(
         )
         user_message = task if not context else f"{task}\n\nContext: {context}"
 
-        client = _make_client()
-        response = await client.chat.completions.create(
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        response = await client.messages.create(
             model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
         )
 
-        result_str = response.choices[0].message.content or ""
-        input_tokens = response.usage.prompt_tokens if response.usage else 0
-        output_tokens = response.usage.completion_tokens if response.usage else 0
+        result_str = response.content[0].text if response.content else ""
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
         output_sample = result_str[:_SAMPLE_MAX]
 
         async with AsyncSessionLocal() as session:
