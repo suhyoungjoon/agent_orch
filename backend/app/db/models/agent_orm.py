@@ -1,5 +1,5 @@
 from sqlalchemy import String, Float, Integer, JSON, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
@@ -17,7 +17,6 @@ class AgentORM(Base):
     team_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    team: Mapped["TeamORM | None"] = relationship("TeamORM", back_populates="agents", lazy="selectin")
 
     # 공개/팀/비공개 ("public" | "team" | "private")
     visibility: Mapped[str] = mapped_column(String, default="team", index=True)
