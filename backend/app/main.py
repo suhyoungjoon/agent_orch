@@ -20,10 +20,6 @@ import app.db.models.roi_snapshot_orm   # noqa: F401
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
-        # PostgreSQL 스키마 분리 사용 시 스키마 먼저 생성
-        if settings.db_schema and "sqlite" not in settings.database_url:
-            from sqlalchemy import text
-            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{settings.db_schema}"'))
         await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
