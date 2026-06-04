@@ -3,7 +3,11 @@ from typing import Optional
 
 
 class ParseIntentRequest(BaseModel):
-    text: str
+    text: str = ""
+    input: str = ""   # 프론트엔드 호환 별칭
+
+    def get_text(self) -> str:
+        return self.text or self.input
 
 
 class AgentConfig(BaseModel):

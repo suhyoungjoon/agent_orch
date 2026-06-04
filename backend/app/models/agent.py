@@ -1,13 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from enum import Enum
-
-
-class AgentRole(str, Enum):
-    RESEARCHER = "researcher"
-    WRITER = "writer"
-    ANALYST = "analyst"
-    CODER = "coder"
 
 
 class AgentStatus(str, Enum):
@@ -22,7 +15,7 @@ AgentVisibility = Literal["public", "team", "private"]
 
 class AgentBase(BaseModel):
     name: str
-    role: AgentRole
+    role: str       # 자유 문자열 — researcher, writer, analyst, coder, qa, marketer 등
     goal: str
     backstory: str
 
@@ -39,7 +32,7 @@ class AgentCreate(AgentBase):
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
-    role: Optional[AgentRole] = None
+    role: Optional[str] = None
     goal: Optional[str] = None
     backstory: Optional[str] = None
     description: Optional[str] = None
