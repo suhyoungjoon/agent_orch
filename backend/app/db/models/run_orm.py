@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Text, DateTime, Integer, Float, Boolean
+from sqlalchemy import String, Text, DateTime, Integer, Float, Boolean, JSON
 from app.db.base import Base
 
 
@@ -36,6 +36,9 @@ class RunORM(Base):
     input_sample: Mapped[str | None] = mapped_column(Text, nullable=True)
     output_sample: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # 툴 호출 기록 [{iteration, tool, input, output}]
+    tool_steps: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # 승인 워크플로
     context: Mapped[str | None] = mapped_column(Text, nullable=True)

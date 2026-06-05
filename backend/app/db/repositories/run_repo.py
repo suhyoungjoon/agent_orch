@@ -96,6 +96,7 @@ class RunRepository:
         input_tokens: int = 0,
         output_tokens: int = 0,
         output_sample: str | None = None,
+        tool_steps: list | None = None,
     ) -> None:
         run = await self.session.get(RunORM, run_id)
         if run:
@@ -107,6 +108,8 @@ class RunRepository:
             run.output_tokens = output_tokens
             run.output_sample = output_sample
             run.duration_ms = (now - run.created_at).total_seconds() * 1000
+            if tool_steps is not None:
+                run.tool_steps = tool_steps
             await self.session.flush()
 
     async def fail(self, run_id: str, error: str) -> None:
