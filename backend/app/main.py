@@ -34,7 +34,15 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
-    await asyncio.get_event_loop().run_in_executor(None, _run_migrations)
+    try:
+        await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, _run_migrations),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        print("⚠️  마이그레이션 타임아웃 — DB 연결을 확인하세요.")
+    except Exception as e:
+        print(f"⚠️  마이그레이션 오류: {e}")
     yield
     await engine.dispose()
 
