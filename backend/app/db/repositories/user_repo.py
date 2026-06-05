@@ -59,6 +59,12 @@ class UserRepository:
         await self.session.flush()
         return user
 
+    async def update_password(self, user_id: str, hashed_password: str) -> None:
+        user = await self.session.get(UserORM, user_id)
+        if user:
+            user.hashed_password = hashed_password
+            await self.session.flush()
+
     async def update_role(self, user_id: str, role: str) -> None:
         user = await self.session.get(UserORM, user_id)
         if user:

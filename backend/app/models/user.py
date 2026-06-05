@@ -36,3 +36,12 @@ class OAuthSyncRequest(BaseModel):
     name: str
     provider: str
     provider_id: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
