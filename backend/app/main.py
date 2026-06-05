@@ -17,10 +17,24 @@ import app.db.models.a2a_chain_orm      # noqa: F401
 import app.db.models.roi_snapshot_orm   # noqa: F401
 
 
+def _run_migrations() -> None:
+    """Alembic 마이그레이션을 동기적으로 실행 (startup 시 자동 적용)."""
+    from alembic.config import Config
+    from alembic import command
+    import os
+
+    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+    alembic_cfg.set_main_option(
+        "script_location",
+        os.path.join(os.path.dirname(__file__), "..", "alembic"),
+    )
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    import asyncio
+    await asyncio.get_event_loop().run_in_executor(None, _run_migrations)
     yield
     await engine.dispose()
 
