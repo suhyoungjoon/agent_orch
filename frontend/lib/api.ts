@@ -1,6 +1,8 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type AgentVisibility = "public" | "team" | "private";
+export type LLMProvider = "claude" | "openai" | "gemini" | "local";
+export type MemoryType = "none" | "short" | "long";
 
 export interface Agent {
   id: string;
@@ -19,6 +21,45 @@ export interface Agent {
   version: string;
   success_rate: number;
   usage_count: number;
+
+  // 고급 스튜디오 필드
+  llm_provider: LLMProvider;
+  model_name: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  top_p: number | null;
+  system_prompt: string | null;
+  memory_type: MemoryType;
+  context_window_size: number | null;
+  max_retries: number;
+  timeout_seconds: number;
+  is_studio_agent: boolean;
+}
+
+export interface StudioAgentInput {
+  name: string;
+  role: string;
+  goal: string;
+  backstory: string;
+  description?: string;
+  version?: string;
+  tags?: string[];
+  visibility?: AgentVisibility;
+  is_studio_agent: true;
+  // LLM
+  llm_provider: LLMProvider;
+  model_name?: string | null;
+  temperature?: number | null;
+  max_tokens?: number | null;
+  top_p?: number | null;
+  // 프롬프트
+  system_prompt?: string | null;
+  // 메모리
+  memory_type?: MemoryType;
+  context_window_size?: number | null;
+  // 실행
+  max_retries?: number;
+  timeout_seconds?: number;
 }
 
 export interface Run {
@@ -404,6 +445,20 @@ export const api = {
     }, token),
   deleteAgent: (id: string, token?: string) =>
     request<void>(`/api/v1/agents/${id}`, { method: "DELETE" }, token),
+  createStudioAgent: (data: StudioAgentInput, token?: string) =>
+    request<Agent>("/api/v1/agents/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, token),
+  updateStudioAgent: (id: string, data: Partial<StudioAgentInput>, token?: string) =>
+    request<Agent>(`/api/v1/agents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }, token),
+  getStudioAgents: (token?: string) => {
+    const q = new URLSearchParams({ studio: "true" });
+    return request<Agent[]>(`/api/v1/agents/?${q}`, undefined, token);
+  },
   getPublicAgents: (params?: Omit<TeamAgentsParams, "visibility">) => {
     const q = new URLSearchParams({ visibility: "public" });
     if (params?.search) q.set("search", params.search);

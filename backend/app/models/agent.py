@@ -11,11 +11,13 @@ class AgentStatus(str, Enum):
 
 
 AgentVisibility = Literal["public", "team", "private"]
+LLMProvider = Literal["claude", "openai", "gemini", "local"]
+MemoryType = Literal["none", "short", "long"]
 
 
 class AgentBase(BaseModel):
     name: str
-    role: str       # 자유 문자열 — researcher, writer, analyst, coder, qa, marketer 등
+    role: str
     goal: str
     backstory: str
 
@@ -28,6 +30,19 @@ class AgentCreate(AgentBase):
     tags: list[str] = Field(default_factory=list)
     version: str = "1.0.0"
     visibility: AgentVisibility = "team"
+
+    # 고급 스튜디오 필드
+    llm_provider: LLMProvider = "claude"
+    model_name: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    top_p: Optional[float] = None
+    system_prompt: Optional[str] = None
+    memory_type: MemoryType = "none"
+    context_window_size: Optional[int] = None
+    max_retries: int = 1
+    timeout_seconds: int = 120
+    is_studio_agent: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -43,6 +58,19 @@ class AgentUpdate(BaseModel):
     tags: Optional[list[str]] = None
     version: Optional[str] = None
     visibility: Optional[AgentVisibility] = None
+
+    # 고급 스튜디오 필드
+    llm_provider: Optional[LLMProvider] = None
+    model_name: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    top_p: Optional[float] = None
+    system_prompt: Optional[str] = None
+    memory_type: Optional[MemoryType] = None
+    context_window_size: Optional[int] = None
+    max_retries: Optional[int] = None
+    timeout_seconds: Optional[int] = None
+    is_studio_agent: Optional[bool] = None
 
 
 class VisibilityUpdate(BaseModel):
@@ -65,5 +93,18 @@ class AgentResponse(AgentBase):
     version: str = "1.0.0"
     success_rate: float = 0.0
     usage_count: int = 0
+
+    # 고급 스튜디오 필드
+    llm_provider: LLMProvider = "claude"
+    model_name: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    top_p: Optional[float] = None
+    system_prompt: Optional[str] = None
+    memory_type: MemoryType = "none"
+    context_window_size: Optional[int] = None
+    max_retries: int = 1
+    timeout_seconds: int = 120
+    is_studio_agent: bool = False
 
     model_config = {"from_attributes": True}

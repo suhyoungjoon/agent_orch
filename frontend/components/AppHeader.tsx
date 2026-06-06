@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, LayoutDashboard, Home, GitMerge, BarChart3, Shield, ClipboardList, Link2, TrendingUp } from "lucide-react";
+import { Bot, LayoutDashboard, Home, GitMerge, BarChart3, Shield, ClipboardList, Link2, TrendingUp, Cpu } from "lucide-react";
 import UserMenu from "./UserMenu";
 
 const NAV = [
   { href: "/",           label: "홈",       Icon: Home },
   { href: "/dashboard",  label: "대시보드",  Icon: LayoutDashboard },
   { href: "/workflow",   label: "워크플로",  Icon: GitMerge },
+  { href: "/studio",     label: "스튜디오",  Icon: Cpu },
   { href: "/report",     label: "리포트",    Icon: BarChart3 },
 ];
 
@@ -37,14 +38,19 @@ export default function AppHeader() {
         {/* 내비게이션 */}
         <nav className="flex items-center gap-1">
           {NAV.map(({ href, label, Icon }) => {
-            const active = pathname === href;
+            const active = pathname === href || pathname.startsWith(href + "/") && href !== "/";
+            const isStudio = href === "/studio";
             return (
               <Link
                 key={href}
                 href={href}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
+                  active && isStudio
+                    ? "bg-violet-50 text-violet-700"
+                    : active
                     ? "bg-blue-50 text-blue-700"
+                    : isStudio
+                    ? "text-violet-500 hover:text-violet-700 hover:bg-violet-50"
                     : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >

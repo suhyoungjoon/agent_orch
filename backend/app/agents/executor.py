@@ -5,7 +5,7 @@
   2. Claude에 작업 전달 (Tool Use 활성화)
   3. Claude가 툴 호출 → 실제 실행 → 결과 반환 → Claude에 재전달
   4. Claude가 최종 답변 생성 (stop_reason == "end_turn")
-  5. 최대 10회 반복으로 무한 루프 방지
+  5. 최대 반복으로 무한 루프 방지
 """
 import uuid
 import asyncio
@@ -26,7 +26,54 @@ from app.agents.tools import get_tools_for_agent, execute_tool
 
 _SAMPLE_MAX = 500
 _DEFAULT_MODEL = "claude-sonnet-4-6"
-_MAX_TOOL_ITERATIONS = 10
+_DEFAULT_MAX_ITERATIONS = 10
+
+# 제공자별 기본 모델
+_PROVIDER_DEFAULT_MODEL = {
+    "claude": "claude-sonnet-4-6",
+    "openai": "gpt-4o",
+    "gemini": "gemini-1.5-pro",
+    "local": "local",
+}
+
+
+def _build_system_prompt(agent_def) -> str:
+    """system_prompt 필드가 있으면 사용, 없으면 role/goal/backstory 템플릿."""
+    if getattr(agent_def, "system_prompt", None):
+        return agent_def.system_prompt
+    return (
+        f"You are a {agent_def.role}.\n"
+        f"Goal: {agent_def.goal}\n"
+        f"Background: {agent_def.backstory}\n\n"
+        "Use the available tools whenever needed to complete the task accurately. "
+        "When you have gathered enough information, provide a comprehensive final answer in Korean."
+    )
+
+
+def _resolve_model(agent_def) -> str:
+    provider = getattr(agent_def, "llm_provider", "claude") or "claude"
+    model_name = getattr(agent_def, "model_name", None)
+    if model_name:
+        return model_name
+    return os.getenv("ANTHROPIC_MODEL", _PROVIDER_DEFAULT_MODEL.get(provider, _DEFAULT_MODEL))
+
+
+def _build_create_kwargs(agent_def, tools: list) -> dict:
+    """Claude messages.create 호출용 kwargs 빌드."""
+    kwargs: dict = {
+        "model": _resolve_model(agent_def),
+        "max_tokens": getattr(agent_def, "max_tokens", None) or 4096,
+        "tools": tools,
+    }
+    temperature = getattr(agent_def, "temperature", None)
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+
+    top_p = getattr(agent_def, "top_p", None)
+    if top_p is not None:
+        kwargs["top_p"] = top_p
+
+    return kwargs
 
 
 async def execute_agent(
@@ -57,7 +104,7 @@ async def execute_agent(
             created_at=now, completed_at=now,
         )
 
-    model_name = os.getenv("ANTHROPIC_MODEL", _DEFAULT_MODEL)
+    model_name = _resolve_model(agent_def)
     run_id = str(uuid.uuid4())
     run_orm = await RunRepository(db).create(
         run_id, agent_id, task,
@@ -84,7 +131,7 @@ async def start_approved_run(run_id: str) -> None:
             await RunRepository(session).fail(run_id, "Agent not found")
             await session.commit()
             return
-        model_name = run_orm.model or os.getenv("ANTHROPIC_MODEL", _DEFAULT_MODEL)
+        model_name = run_orm.model or _resolve_model(agent_def)
 
     asyncio.create_task(_run_agent(run_id, agent_def, run_orm.task, run_orm.context, model_name))
 
@@ -100,44 +147,46 @@ async def _run_agent(
     succeeded = False
     input_tokens = 0
     output_tokens = 0
+    max_iterations = getattr(agent_def, "max_retries", None) or _DEFAULT_MAX_ITERATIONS
 
     try:
+        provider = getattr(agent_def, "llm_provider", "claude") or "claude"
+        if provider != "claude":
+            # 비-Claude 제공자는 mock 응답
+            result_str = f"[{provider.upper()} mock] {task} 작업이 완료됐습니다. (실제 연동 미구현)"
+            async with AsyncSessionLocal() as session:
+                run_repo = RunRepository(session)
+                await run_repo.complete(run_id, result_str, 0, 0, result_str[:_SAMPLE_MAX])
+                await session.commit()
+                updated = await run_repo.get_by_id(run_id)
+            if updated:
+                await pubsub.publish_run(run_id, RunResponse.model_validate(updated).model_dump(mode="json"))
+            return
+
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-
-        system_prompt = (
-            f"You are a {agent_def.role}.\n"
-            f"Goal: {agent_def.goal}\n"
-            f"Background: {agent_def.backstory}\n\n"
-            "Use the available tools whenever needed to complete the task accurately. "
-            "When you have gathered enough information, provide a comprehensive final answer in Korean."
-        )
-
+        system_prompt = _build_system_prompt(agent_def)
         user_message = task if not context else f"{task}\n\nContext: {context}"
         messages = [{"role": "user", "content": user_message}]
 
         tools = get_tools_for_agent(agent_def.tags or [], agent_def.role)
+        create_kwargs = _build_create_kwargs(agent_def, tools)
 
-        # 중간 툴 호출 기록
         tool_steps: list[dict] = []
         result_str = ""
 
-        for iteration in range(_MAX_TOOL_ITERATIONS):
+        for iteration in range(max_iterations):
             response = await client.messages.create(
-                model=model_name,
-                max_tokens=4096,
                 system=system_prompt,
-                tools=tools,
                 messages=messages,
+                **create_kwargs,
             )
 
             input_tokens += response.usage.input_tokens
             output_tokens += response.usage.output_tokens
 
-            # 진행 상황 pubsub 전송
             await _publish_progress(run_id, iteration, response.stop_reason, tool_steps)
 
             if response.stop_reason == "end_turn":
-                # 최종 답변 추출
                 result_str = "\n".join(
                     block.text for block in response.content
                     if hasattr(block, "text")
@@ -145,10 +194,7 @@ async def _run_agent(
                 break
 
             if response.stop_reason == "tool_use":
-                # 어시스턴트 메시지 추가
                 messages.append({"role": "assistant", "content": response.content})
-
-                # 툴 실행
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
@@ -164,22 +210,18 @@ async def _run_agent(
                             "tool_use_id": block.id,
                             "content": tool_output,
                         })
-
                 messages.append({"role": "user", "content": tool_results})
                 continue
 
-            # 예상치 못한 stop_reason
             break
 
         else:
-            # 최대 반복 초과 — 마지막 텍스트 추출
             result_str = "\n".join(
                 block.text for block in response.content if hasattr(block, "text")
             ) or "최대 반복 횟수 초과로 작업이 중단됐습니다."
 
         output_sample = result_str[:_SAMPLE_MAX]
 
-        # tool_steps를 result에 첨부
         if tool_steps:
             steps_summary = "\n\n---\n**툴 호출 기록:**\n" + "\n".join(
                 f"{s['iteration']}. [{s['tool']}] {json.dumps(s['input'], ensure_ascii=False)} → {s['output'][:200]}"
@@ -211,7 +253,6 @@ async def _run_agent(
 
 
 async def _publish_progress(run_id: str, iteration: int, stop_reason: str, tool_steps: list) -> None:
-    """실행 중 진행 상황을 WebSocket 구독자에게 전달."""
     try:
         await pubsub.publish_run(run_id, {
             "run_id": run_id,

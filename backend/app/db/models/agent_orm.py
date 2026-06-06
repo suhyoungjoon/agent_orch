@@ -1,4 +1,4 @@
-from sqlalchemy import String, Float, Integer, JSON
+from sqlalchemy import String, Float, Integer, JSON, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -30,3 +30,22 @@ class AgentORM(Base):
     version: Mapped[str] = mapped_column(String, default="1.0.0")
     success_rate: Mapped[float] = mapped_column(Float, default=0.0)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ── 고급 스튜디오 필드 ───────────────────────────────────────────────
+    llm_provider: Mapped[str] = mapped_column(String, default="claude", nullable=False)
+    model_name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_p: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # null이면 role/goal/backstory 템플릿 사용
+    system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    memory_type: Mapped[str] = mapped_column(String, default="none", nullable=False)
+    context_window_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    max_retries: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+
+    is_studio_agent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
