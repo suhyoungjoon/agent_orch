@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, LayoutDashboard, Home, GitMerge, BarChart3, Shield, ClipboardList, Link2, TrendingUp, Cpu } from "lucide-react";
+import { Bot, LayoutDashboard, Home, GitMerge, BarChart3, Shield, ClipboardList, Link2, TrendingUp, Cpu, Plug } from "lucide-react";
 import UserMenu from "./UserMenu";
 
 const NAV = [
@@ -18,6 +18,7 @@ const GOV_NAV = [
   { href: "/security",   label: "보안",      Icon: Shield },
   { href: "/a2a",        label: "A2A",       Icon: Link2 },
   { href: "/roi",        label: "ROI",       Icon: TrendingUp },
+  { href: "/mcp",        label: "MCP",       Icon: Plug },
 ];
 
 export default function AppHeader() {

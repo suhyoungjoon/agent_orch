@@ -410,6 +410,37 @@ export interface SprawlReport {
   summary: { shadow_count: number; stale_count: number; risky_count: number; total_risk: number };
 }
 
+export interface MCPTool {
+  name: string;
+  description: string;
+  input_schema: object;
+}
+
+export interface MCPServer {
+  id: string;
+  name: string;
+  description: string | null;
+  endpoint: string | null;
+  transport: string;
+  status: "online" | "offline" | "unknown" | "error";
+  error_message: string | null;
+  tools_cache: MCPTool[] | null;
+  tools_cached_at: string | null;
+  last_checked_at: string | null;
+  team_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentMCPTool {
+  id: string;
+  server_id: string;
+  tool_name: string;
+  tool_schema: object | null;
+  enabled: boolean;
+}
+
 export const api = {
   getAgents: (token?: string) => request<Agent[]>("/api/v1/agents/", undefined, token),
   getAgent: (id: string) => request<Agent>(`/api/v1/agents/${id}`),
@@ -588,4 +619,49 @@ export const api = {
     const q = team_id ? `?team_id=${team_id}` : "";
     return request<SprawlReport>(`/api/v1/roi/sprawl${q}`, undefined, token);
   },
+
+  // ── MCP 서버 연동 ─────────────────────────────────────────────────
+  getMCPServers: (token?: string) =>
+    request<MCPServer[]>("/api/v1/mcp/servers", undefined, token),
+
+  createMCPServer: (data: { name: string; endpoint?: string; description?: string }, token?: string) =>
+    request<MCPServer>("/api/v1/mcp/servers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, token),
+
+  deleteMCPServer: (serverId: string, token?: string) =>
+    request<void>(`/api/v1/mcp/servers/${serverId}`, { method: "DELETE" }, token),
+
+  testMCPServer: (serverId: string, token?: string) =>
+    request<{ ok: boolean; message: string; tools: MCPTool[] }>(
+      `/api/v1/mcp/servers/${serverId}/test`,
+      { method: "POST" },
+      token
+    ),
+
+  getMCPServerTools: (serverId: string, token?: string) =>
+    request<{ tools: MCPTool[]; cached: boolean }>(
+      `/api/v1/mcp/servers/${serverId}/tools`,
+      undefined,
+      token
+    ),
+
+  getAgentMCPTools: (agentId: string, token?: string) =>
+    request<{ agent_id: string; tools: AgentMCPTool[] }>(
+      `/api/v1/mcp/agents/${agentId}/tools`,
+      undefined,
+      token
+    ),
+
+  setAgentMCPTools: (
+    agentId: string,
+    selections: { server_id: string; tool_name: string; tool_schema?: object }[],
+    token?: string
+  ) =>
+    request<{ agent_id: string; enabled_count: number; tools: string[] }>(
+      `/api/v1/mcp/agents/${agentId}/tools`,
+      { method: "PUT", body: JSON.stringify(selections) },
+      token
+    ),
 };

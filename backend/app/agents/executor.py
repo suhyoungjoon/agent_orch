@@ -168,7 +168,19 @@ async def _run_agent(
         user_message = task if not context else f"{task}\n\nContext: {context}"
         messages = [{"role": "user", "content": user_message}]
 
-        tools = get_tools_for_agent(agent_def.tags or [], agent_def.role)
+        # 내장 툴 + 에이전트에 연결된 MCP 툴 합산
+        builtin_tools = get_tools_for_agent(agent_def.tags or [], agent_def.role)
+        async with AsyncSessionLocal() as _mcp_session:
+            from app.services.mcp_service import get_agent_mcp_tool_schemas
+            mcp_tool_schemas = await get_agent_mcp_tool_schemas(_mcp_session, agent_def.id)
+        # MCP 툴에서 Claude 포맷에 불필요한 내부 필드 제거
+        mcp_tools_clean = [
+            {k: v for k, v in s.items() if not k.startswith("_")}
+            for s in mcp_tool_schemas
+        ]
+        # MCP 서버 ID → endpoint 매핑 (툴 실행 시 사용)
+        _mcp_meta = {s["name"]: s for s in mcp_tool_schemas}
+        tools = builtin_tools + mcp_tools_clean
         create_kwargs = _build_create_kwargs(agent_def, tools)
 
         tool_steps: list[dict] = []
@@ -198,7 +210,18 @@ async def _run_agent(
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        tool_output = await execute_tool(block.name, block.input)
+                        # MCP 툴이면 해당 서버로 실행, 아니면 내장 툴
+                        if block.name in _mcp_meta:
+                            meta = _mcp_meta[block.name]
+                            async with AsyncSessionLocal() as _s:
+                                from app.services.mcp_service import get_server, call_tool as mcp_call
+                                srv = await get_server(_s, meta["_mcp_server_id"])
+                            if srv and srv.endpoint:
+                                tool_output = await mcp_call(srv.endpoint, meta["_mcp_tool_name"], block.input)
+                            else:
+                                tool_output = f"MCP 서버 오프라인: {meta.get('_mcp_server_id')}"
+                        else:
+                            tool_output = await execute_tool(block.name, block.input)
                         tool_steps.append({
                             "iteration": iteration + 1,
                             "tool": block.name,
