@@ -49,8 +49,15 @@ async def _seed_admin() -> None:
 
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
-        if await repo.get_by_email(ADMIN_EMAIL):
-            return  # 이미 존재하면 건너뜀
+        existing = await repo.get_by_email(ADMIN_EMAIL)
+        if existing:
+            # 이미 존재하면 비밀번호·role만 강제 갱신
+            existing.hashed_password = hash_password(ADMIN_PASSWORD)
+            existing.role = "admin"
+            existing.provider = "credentials"
+            await db.commit()
+            print(f"✅  admin 계정 비밀번호 초기화 완료: {ADMIN_EMAIL}")
+            return
 
         team_repo = TeamRepository(db)
         team = await team_repo.create(TEAM_NAME)
