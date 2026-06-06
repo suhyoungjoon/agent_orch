@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { api, AgentConfig, ParseIntentResult } from "@/lib/api";
+import { AgentConfig, ParseIntentResult, api } from "@/lib/api";
+import AgentFormModal from "./AgentFormModal";
 import {
   Sparkles,
   Loader2,
@@ -10,7 +11,6 @@ import {
   Wrench,
   AlertCircle,
   Plus,
-  CheckCircle2,
   BookOpen,
 } from "lucide-react";
 
@@ -28,12 +28,15 @@ const ROLE_BACKSTORY: Record<string, string> = {
   coder: "효율적이고 명확한 코드를 작성하는 소프트웨어 엔지니어입니다.",
 };
 
+const KNOWN_TOOLS = ["web_search", "calculate", "fetch_webpage"];
+
 export default function ParseIntent() {
   const { data: session } = useSession();
   const [text, setText] = useState("");
   const [result, setResult] = useState<ParseIntentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creatingAgent, setCreatingAgent] = useState<AgentConfig | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -118,10 +121,23 @@ export default function ParseIntent() {
                 <AgentConfigCard
                   key={agent.execution_order}
                   agent={agent}
-                  token={session?.user?.accessToken}
+                  onCreateClick={() => setCreatingAgent(agent)}
                 />
               ))}
             </div>
+          )}
+
+          {creatingAgent && (
+            <AgentFormModal
+              initialData={{
+                name: creatingAgent.name,
+                role: creatingAgent.role,
+                goal: creatingAgent.goal,
+                backstory: ROLE_BACKSTORY[creatingAgent.role] ?? `${creatingAgent.role} 전문 에이전트입니다.`,
+                tools: creatingAgent.tools.filter((t) => KNOWN_TOOLS.includes(t)),
+              }}
+              onClose={() => setCreatingAgent(null)}
+            />
           )}
         </div>
       )}
@@ -131,37 +147,12 @@ export default function ParseIntent() {
 
 function AgentConfigCard({
   agent,
-  token,
+  onCreateClick,
 }: {
   agent: AgentConfig;
-  token?: string;
+  onCreateClick: () => void;
 }) {
-  const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const roleColor = ROLE_COLORS[agent.role] ?? "bg-gray-100 text-gray-600";
-
-  async function handleCreate() {
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await api.createAgent(
-        {
-          name: agent.name,
-          role: agent.role,
-          goal: agent.goal,
-          backstory: ROLE_BACKSTORY[agent.role] ?? `${agent.role} 전문 에이전트입니다.`,
-          tags: agent.tools,
-        },
-        token
-      );
-      setCreated(true);
-    } catch (e) {
-      setCreateError(e instanceof Error ? e.message : "생성 실패");
-    } finally {
-      setCreating(false);
-    }
-  }
 
   return (
     <div className="rounded-xl bg-white border border-gray-100 p-3 space-y-2">
@@ -174,9 +165,7 @@ function AgentConfigCard({
             {agent.name}
           </span>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${roleColor}`}
-        >
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${roleColor}`}>
           {agent.role}
         </span>
       </div>
@@ -187,10 +176,7 @@ function AgentConfigCard({
         <div className="flex items-center gap-1 flex-wrap">
           <Wrench size={11} className="text-gray-400 shrink-0" />
           {agent.tools.map((tool) => (
-            <span
-              key={tool}
-              className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500"
-            >
+            <span key={tool} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
               {tool}
             </span>
           ))}
@@ -203,27 +189,14 @@ function AgentConfigCard({
             <BookOpen size={12} />
             레지스트리에 있는 에이전트
           </div>
-        ) : created ? (
-          <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
-            <CheckCircle2 size={12} />
-            에이전트 생성 완료
-          </div>
         ) : (
           <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="flex items-center gap-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onCreateClick}
+            className="flex items-center gap-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 text-xs font-medium transition-colors"
           >
-            {creating ? (
-              <Loader2 size={11} className="animate-spin" />
-            ) : (
-              <Plus size={11} />
-            )}
-            {creating ? "생성 중..." : "에이전트 생성"}
+            <Plus size={11} />
+            에이전트 생성
           </button>
-        )}
-        {createError && (
-          <p className="text-xs text-red-500 mt-1">{createError}</p>
         )}
       </div>
     </div>

@@ -159,6 +159,10 @@ _TAG_TOOL_MAP = {
     "analyst": ["web_search", "calculate"],
     "coder": ["calculate", "fetch_webpage"],
     "writer": ["web_search"],
+    # 도구 이름 직접 지정
+    "web_search": ["web_search"],
+    "calculate": ["calculate"],
+    "fetch_webpage": ["fetch_webpage"],
 }
 
 def get_tools_for_agent(tags: list[str], role: str = "") -> list[dict]:
