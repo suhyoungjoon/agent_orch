@@ -9,6 +9,9 @@ import {
   ChevronRight,
   Wrench,
   AlertCircle,
+  Plus,
+  CheckCircle2,
+  BookOpen,
 } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -16,6 +19,13 @@ const ROLE_COLORS: Record<string, string> = {
   writer: "bg-purple-100 text-purple-700",
   analyst: "bg-amber-100 text-amber-700",
   coder: "bg-green-100 text-green-700",
+};
+
+const ROLE_BACKSTORY: Record<string, string> = {
+  researcher: "정보 수집과 분석에 특화된 전문 리서처입니다.",
+  writer: "수집된 정보를 명확하고 구조화된 콘텐츠로 변환하는 작가입니다.",
+  analyst: "데이터를 분석하고 의미 있는 인사이트를 도출하는 분석가입니다.",
+  coder: "효율적이고 명확한 코드를 작성하는 소프트웨어 엔지니어입니다.",
 };
 
 export default function ParseIntent() {
@@ -33,10 +43,7 @@ export default function ParseIntent() {
     setResult(null);
 
     try {
-      const data = await api.parseIntent(
-        text.trim(),
-        session?.user?.accessToken
-      );
+      const data = await api.parseIntent(text.trim(), session?.user?.accessToken);
       setResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "요청에 실패했습니다.");
@@ -103,7 +110,11 @@ export default function ParseIntent() {
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {result.agents.map((agent) => (
-              <AgentConfigCard key={agent.execution_order} agent={agent} />
+              <AgentConfigCard
+                key={agent.execution_order}
+                agent={agent}
+                token={session?.user?.accessToken}
+              />
             ))}
           </div>
         </div>
@@ -112,9 +123,39 @@ export default function ParseIntent() {
   );
 }
 
-function AgentConfigCard({ agent }: { agent: AgentConfig }) {
-  const roleColor =
-    ROLE_COLORS[agent.role] ?? "bg-gray-100 text-gray-600";
+function AgentConfigCard({
+  agent,
+  token,
+}: {
+  agent: AgentConfig;
+  token?: string;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const roleColor = ROLE_COLORS[agent.role] ?? "bg-gray-100 text-gray-600";
+
+  async function handleCreate() {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await api.createAgent(
+        {
+          name: agent.name,
+          role: agent.role,
+          goal: agent.goal,
+          backstory: ROLE_BACKSTORY[agent.role] ?? `${agent.role} 전문 에이전트입니다.`,
+          tags: agent.tools,
+        },
+        token
+      );
+      setCreated(true);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "생성 실패");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="rounded-xl bg-white border border-gray-100 p-3 space-y-2">
@@ -149,6 +190,36 @@ function AgentConfigCard({ agent }: { agent: AgentConfig }) {
           ))}
         </div>
       )}
+
+      <div className="pt-1">
+        {agent.existing_agent_id ? (
+          <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
+            <BookOpen size={12} />
+            레지스트리에 있는 에이전트
+          </div>
+        ) : created ? (
+          <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+            <CheckCircle2 size={12} />
+            에이전트 생성 완료
+          </div>
+        ) : (
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="flex items-center gap-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {creating ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <Plus size={11} />
+            )}
+            {creating ? "생성 중..." : "에이전트 생성"}
+          </button>
+        )}
+        {createError && (
+          <p className="text-xs text-red-500 mt-1">{createError}</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,6 +16,7 @@ class AgentConfig(BaseModel):
     goal: str
     tools: list[str]
     execution_order: int
+    existing_agent_id: Optional[str] = None  # 레지스트리에 이미 있는 에이전트 ID
 
 
 class ParseIntentResponse(BaseModel):

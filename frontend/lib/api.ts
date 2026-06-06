@@ -92,6 +92,7 @@ export interface AgentConfig {
   goal: string;
   tools: string[];
   execution_order: number;
+  existing_agent_id: string | null;
 }
 
 export interface DashboardSummary {
