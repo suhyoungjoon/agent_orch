@@ -9,11 +9,12 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useSession } from "next-auth/react";
-import { api, Agent, Workflow, WorkflowNode, WorkflowEdge, WorkflowRun, NodeRunResult } from "@/lib/api";
+import { api, Agent, Workflow, WorkflowNode, WorkflowEdge, EdgeMapping, WorkflowRun, NodeRunResult } from "@/lib/api";
 import WorkflowAgentNode, { AgentNodeData } from "./WorkflowAgentNode";
 import {
   Save, ArrowLeft, AlertTriangle, CheckCircle,
   XCircle, Loader2, GripVertical, Play, ChevronDown, ChevronUp,
+  Plus, Trash2, ArrowRight,
 } from "lucide-react";
 
 // ── 충돌 감지 ─────────────────────────────────────────────────────────────────
@@ -356,14 +357,168 @@ function rfToApi(nodes: Node[], edges: Edge[]): { nodes: WorkflowNode[]; edges: 
       position: n.position,
       data: n.data as WorkflowNode["data"],
     })),
-    edges: edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? null,
-      targetHandle: e.targetHandle ?? null,
-    })),
+    edges: edges.map((e) => {
+      const edgeData = e.data as { mapping?: EdgeMapping[] } | undefined;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+        targetHandle: e.targetHandle ?? null,
+        ...(edgeData?.mapping?.length ? { data: { mapping: edgeData.mapping } } : {}),
+      };
+    }),
   };
+}
+
+// ── 엣지 매핑 모달 ────────────────────────────────────────────────────────────
+
+function EdgeMappingModal({
+  edge,
+  sourceNode,
+  targetNode,
+  sourceAgent,
+  targetAgent,
+  onSave,
+  onClose,
+}: {
+  edge: Edge;
+  sourceNode: Node | undefined;
+  targetNode: Node | undefined;
+  sourceAgent: Agent | undefined;
+  targetAgent: Agent | undefined;
+  onSave: (edgeId: string, mapping: EdgeMapping[]) => void;
+  onClose: () => void;
+}) {
+  const existingMapping = ((edge.data as { mapping?: EdgeMapping[] } | undefined)?.mapping) ?? [];
+  const [mappings, setMappings] = useState<EdgeMapping[]>(existingMapping);
+
+  const sourceName = (sourceNode?.data as AgentNodeData | undefined)?.label ?? edge.source;
+  const targetName = (targetNode?.data as AgentNodeData | undefined)?.label ?? edge.target;
+
+  const sourceFields = Object.keys(
+    (sourceAgent?.output_schema as { properties?: Record<string, unknown> } | null | undefined)?.properties ?? {}
+  );
+  const targetFields = Object.keys(
+    (targetAgent?.input_schema as { properties?: Record<string, unknown> } | null | undefined)?.properties ?? {}
+  );
+
+  function addRow() {
+    setMappings((prev) => [...prev, { from: sourceFields[0] ?? "", to: targetFields[0] ?? "" }]);
+  }
+
+  function removeRow(i: number) {
+    setMappings((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function updateRow(i: number, field: "from" | "to", value: string) {
+    setMappings((prev) => prev.map((m, idx) => idx === i ? { ...m, [field]: value } : m));
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900 text-base">데이터 매핑 설정</h3>
+          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+            <span className="font-medium text-blue-600">{sourceName}</span>
+            <ArrowRight size={12} />
+            <span className="font-medium text-purple-600">{targetName}</span>
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <div className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 text-[11px] font-medium text-gray-500 px-1">
+            <span>{sourceName} 출력 필드</span>
+            <span />
+            <span>{targetName} 입력 필드</span>
+            <span />
+          </div>
+
+          {mappings.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-3 bg-gray-50 rounded-lg">
+              매핑 없음 — 이전 노드 결과 전체가 전달됩니다.
+            </p>
+          )}
+
+          {mappings.map((m, i) => (
+            <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
+              {sourceFields.length > 0 ? (
+                <select
+                  value={m.from}
+                  onChange={(e) => updateRow(i, "from", e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  {sourceFields.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={m.from}
+                  onChange={(e) => updateRow(i, "from", e.target.value)}
+                  placeholder="출력 필드명"
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              )}
+              <ArrowRight size={12} className="text-gray-400" />
+              {targetFields.length > 0 ? (
+                <select
+                  value={m.to}
+                  onChange={(e) => updateRow(i, "to", e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                >
+                  {targetFields.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={m.to}
+                  onChange={(e) => updateRow(i, "to", e.target.value)}
+                  placeholder="입력 필드명"
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                />
+              )}
+              <button
+                onClick={() => removeRow(i)}
+                className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={addRow}
+            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 px-1"
+          >
+            <Plus size={13} />
+            매핑 추가
+          </button>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-3 text-[11px] text-gray-500 space-y-0.5">
+          <p>• 매핑을 설정하면 이전 노드의 특정 필드만 다음 노드로 전달됩니다.</p>
+          <p>• 매핑이 없으면 이전 노드의 전체 결과가 전달됩니다.</p>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={() => { onSave(edge.id, mappings.filter((m) => m.from.trim() && m.to.trim())); onClose(); }}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            저장
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function WorkflowBuilder({
@@ -379,9 +534,12 @@ export default function WorkflowBuilder({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [wfName, setWfName] = useState("새 워크플로");
+  const [execMode, setExecMode] = useState<"sequential" | "hierarchical">("sequential");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(workflowId);
+  const [showSaveAsTeam, setShowSaveAsTeam] = useState(false);
+  const [teamAgentName, setTeamAgentName] = useState("");
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
@@ -390,6 +548,7 @@ export default function WorkflowBuilder({
   const [showRunModal, setShowRunModal] = useState(false);
   const [running, setRunning] = useState(false);
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
+  const [mappingEdge, setMappingEdge] = useState<Edge | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rfInstanceRef = useRef<ReactFlowInstance<any, any> | null>(null);
@@ -416,6 +575,7 @@ export default function WorkflowBuilder({
     (async () => {
       const wf: Workflow = await api.getWorkflow(workflowId, token);
       setWfName(wf.name);
+      setExecMode((wf.execution_mode as "sequential" | "hierarchical") || "sequential");
       setNodes(wf.nodes as Node[]);
       setEdges(wf.edges as Edge[]);
     })();
@@ -449,6 +609,17 @@ export default function WorkflowBuilder({
       setEdges((eds) => addEdge({ ...params, id: `e-${Date.now()}` }, eds)),
     [setEdges],
   );
+
+  // 엣지 매핑 저장
+  const onSaveMapping = useCallback((edgeId: string, mapping: EdgeMapping[]) => {
+    setEdges((eds) =>
+      eds.map((e) =>
+        e.id === edgeId
+          ? { ...e, data: { ...(e.data as object | undefined), mapping } }
+          : e
+      )
+    );
+  }, [setEdges]);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -489,7 +660,7 @@ export default function WorkflowBuilder({
     setSaving(true);
     setSaveMsg(null);
     try {
-      const payload = rfToApi(nodes, edges);
+      const payload = { ...rfToApi(nodes, edges), execution_mode: execMode };
       if (currentId) {
         await api.updateWorkflow(currentId, { name: wfName, ...payload }, token);
       } else {
@@ -598,6 +769,34 @@ export default function WorkflowBuilder({
           </span>
         )}
 
+        {/* 실행 방식 토글 */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-xs">
+          {(["sequential", "hierarchical"] as const).map(mode => (
+            <button
+              key={mode}
+              onClick={() => setExecMode(mode)}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                execMode === mode
+                  ? "bg-white text-gray-800 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {mode === "sequential" ? "순차" : "계층"}
+            </button>
+          ))}
+        </div>
+
+        {/* 팀으로 저장 */}
+        {currentId && (
+          <button
+            onClick={() => { setTeamAgentName(wfName + " 팀"); setShowSaveAsTeam(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+            title="이 워크플로를 하나의 팀 에이전트로 저장"
+          >
+            👥 팀으로 저장
+          </button>
+        )}
+
         {/* 실행 버튼 */}
         <button
           onClick={() => setShowRunModal(true)}
@@ -618,6 +817,61 @@ export default function WorkflowBuilder({
         </button>
       </div>
 
+      {/* 팀으로 저장 모달 */}
+      {showSaveAsTeam && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          onClick={() => setShowSaveAsTeam(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-1">워크플로를 팀 에이전트로 저장</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              저장된 팀 에이전트는 에이전트 목록에서 하나의 에이전트처럼 사용할 수 있습니다.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">팀 에이전트 이름</label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={teamAgentName}
+                  onChange={e => setTeamAgentName(e.target.value)}
+                  placeholder="예: 리서치 팀"
+                />
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 text-xs text-purple-700">
+                <p>• 실행 방식: <strong>{execMode === "sequential" ? "순차 실행" : "계층 실행 (관리자-작업자)"}</strong></p>
+                <p>• 노드 수: <strong>{nodes.length}개 에이전트</strong></p>
+                <p>• 이 팀 에이전트에 작업을 주면 모든 에이전트가 협력해 완료합니다.</p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-4">
+              <button onClick={() => setShowSaveAsTeam(false)}
+                className="px-4 py-2 border rounded-lg text-sm text-gray-600">취소</button>
+              <button
+                onClick={async () => {
+                  if (!currentId || !teamAgentName.trim()) return;
+                  try {
+                    await handleSave(); // 최신 상태로 먼저 저장
+                    const result = await api.saveWorkflowAsAgent(
+                      currentId,
+                      { agent_name: teamAgentName },
+                      token
+                    );
+                    alert(result.message);
+                    setShowSaveAsTeam(false);
+                  } catch (e) {
+                    alert("저장 실패: " + (e instanceof Error ? e.message : "오류"));
+                  }
+                }}
+                disabled={!teamAgentName.trim()}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+              >
+                팀 에이전트 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3-패널 레이아웃 */}
       <div className="flex flex-1 min-h-0">
         <AgentPalette agents={agents} loading={agentsLoading} />
@@ -627,10 +881,14 @@ export default function WorkflowBuilder({
           <div className="flex-1 min-h-0" onDragOver={onDragOver} onDrop={onDrop}>
             <ReactFlow
               nodes={displayNodes as Node[]}
-              edges={edges}
+              edges={edges.map((e) => {
+                const hasMappings = ((e.data as { mapping?: EdgeMapping[] } | undefined)?.mapping?.length ?? 0) > 0;
+                return hasMappings ? { ...e, style: { stroke: "#7c3aed", strokeWidth: 2 } } : e;
+              })}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onEdgeClick={(_, edge) => setMappingEdge(edge)}
               onInit={(instance) => { rfInstanceRef.current = instance; }}
               nodeTypes={NODE_TYPES}
               fitView
@@ -667,6 +925,19 @@ export default function WorkflowBuilder({
           onRun={handleRun}
           onClose={() => setShowRunModal(false)}
           running={running}
+        />
+      )}
+
+      {/* 엣지 데이터 매핑 모달 */}
+      {mappingEdge && (
+        <EdgeMappingModal
+          edge={mappingEdge}
+          sourceNode={nodes.find((n) => n.id === mappingEdge.source)}
+          targetNode={nodes.find((n) => n.id === mappingEdge.target)}
+          sourceAgent={agentMap.get((nodes.find((n) => n.id === mappingEdge.source)?.data as AgentNodeData | undefined)?.agentId ?? "")}
+          targetAgent={agentMap.get((nodes.find((n) => n.id === mappingEdge.target)?.data as AgentNodeData | undefined)?.agentId ?? "")}
+          onSave={onSaveMapping}
+          onClose={() => setMappingEdge(null)}
         />
       )}
     </div>

@@ -26,6 +26,7 @@ class WorkflowRepository:
         team_id: str | None,
         created_by: str | None,
         description: str | None = None,
+        execution_mode: str = "sequential",
         nodes: list | None = None,
         edges: list | None = None,
     ) -> WorkflowORM:
@@ -37,6 +38,7 @@ class WorkflowRepository:
             team_id=team_id,
             created_by=created_by,
             status="draft",
+            execution_mode=execution_mode,
             nodes=nodes or [],
             edges=edges or [],
             created_at=now,

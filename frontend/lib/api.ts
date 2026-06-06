@@ -234,12 +234,18 @@ export interface WorkflowNode {
   data: { agentId: string; label: string; role: string; tags?: string[] };
 }
 
+export interface EdgeMapping {
+  from: string;
+  to: string;
+}
+
 export interface WorkflowEdge {
   id: string;
   source: string;
   target: string;
   sourceHandle?: string | null;
   targetHandle?: string | null;
+  data?: { mapping?: EdgeMapping[] };
 }
 
 export interface Workflow {
@@ -249,6 +255,7 @@ export interface Workflow {
   team_id: string | null;
   created_by: string | null;
   status: string;
+  execution_mode: "sequential" | "hierarchical";
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   created_at: string;
@@ -258,6 +265,7 @@ export interface Workflow {
 export interface WorkflowCreate {
   name: string;
   description?: string;
+  execution_mode?: "sequential" | "hierarchical";
   nodes?: WorkflowNode[];
   edges?: WorkflowEdge[];
 }
@@ -693,6 +701,17 @@ export const api = {
     ),
 
   // ── 트리거 & 훅 ────────────────────────────────────────────────────
+  saveWorkflowAsAgent: (
+    workflowId: string,
+    data: { agent_name: string; description?: string; visibility?: string },
+    token?: string
+  ) =>
+    request<{ agent_id: string; agent_name: string; workflow_id: string; message: string }>(
+      `/api/v1/workflows/${workflowId}/save-as-agent`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
   getTriggers: (agentId?: string, type?: string, token?: string) => {
     const q = new URLSearchParams();
     if (agentId) q.set("agent_id", agentId);

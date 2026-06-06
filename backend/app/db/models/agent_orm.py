@@ -27,6 +27,9 @@ class AgentORM(Base):
     output_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
 
+    # 팀 에이전트: 설정 시 이 에이전트는 해당 워크플로를 실행하는 팀으로 동작
+    source_workflow_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     version: Mapped[str] = mapped_column(String, default="1.0.0")
     success_rate: Mapped[float] = mapped_column(Float, default=0.0)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)

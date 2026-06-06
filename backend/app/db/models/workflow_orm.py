@@ -14,6 +14,9 @@ class WorkflowORM(Base):
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="draft")
 
+    # 실행 방식: sequential (기본) | hierarchical (관리자-작업자)
+    execution_mode: Mapped[str] = mapped_column(String, default="sequential")
+
     # React Flow 노드/엣지를 JSON 그대로 저장 (프론트엔드 포맷 유지)
     nodes: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
     edges: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)

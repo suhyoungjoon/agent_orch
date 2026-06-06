@@ -40,6 +40,7 @@ async def create_workflow(
         workflow_id=workflow_id,
         name=body.name,
         description=body.description,
+        execution_mode=body.execution_mode,
         team_id=current_user.team_id,
         created_by=current_user.id,
         nodes=body.nodes,
@@ -172,3 +173,65 @@ async def stream_workflow_run(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+
+# ── 팀 에이전트로 저장 ──────────────────────────────────────────────────────
+from pydantic import BaseModel as _BaseModel
+
+class SaveAsAgentRequest(_BaseModel):
+    agent_name: str
+    description: str | None = None
+    visibility: str = "team"
+
+@router.post("/{workflow_id}/save-as-agent", status_code=201)
+async def save_workflow_as_agent(
+    workflow_id: str,
+    body: SaveAsAgentRequest,
+    current_user: UserORM = Depends(require_member_or_above),
+    db: AsyncSession = Depends(get_db),
+):
+    """워크플로를 하나의 팀 에이전트로 저장.
+    저장된 에이전트는 실행 시 연결된 워크플로를 대신 실행한다.
+    """
+    from datetime import datetime, timezone
+    from app.db.models.agent_orm import AgentORM
+
+    workflow = await WorkflowRepository(db).get_by_id(workflow_id)
+    if not workflow:
+        raise HTTPException(404, "워크플로를 찾을 수 없습니다.")
+
+    # 노드 수 / 실행 방식 요약
+    node_count = len(workflow.nodes or [])
+    mode = getattr(workflow, "execution_mode", "sequential")
+
+    agent = AgentORM(
+        id=f"team-{uuid.uuid4().hex[:10]}",
+        name=body.agent_name,
+        role="team",
+        goal=f"'{workflow.name}' 워크플로를 실행합니다. ({node_count}개 에이전트, {mode} 방식)",
+        backstory=(
+            body.description
+            or f"'{workflow.name}' 워크플로를 하나의 에이전트처럼 실행하는 팀입니다."
+        ),
+        description=body.description,
+        team_id=current_user.team_id,
+        visibility=body.visibility,
+        tags=["팀", mode],
+        version="1.0.0",
+        source_workflow_id=workflow_id,
+        created_at=datetime.now(timezone.utc) if hasattr(AgentORM, 'created_at') else None,
+    )
+    db.add(agent)
+    await db.commit()
+    await db.refresh(agent)
+
+    return {
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "workflow_id": workflow_id,
+        "workflow_name": workflow.name,
+        "execution_mode": mode,
+        "node_count": node_count,
+        "message": f"'{body.agent_name}' 팀 에이전트가 생성됐습니다. 에이전트 목록에서 사용할 수 있습니다.",
+    }

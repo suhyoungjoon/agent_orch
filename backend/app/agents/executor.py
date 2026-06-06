@@ -104,6 +104,14 @@ async def execute_agent(
             created_at=now, completed_at=now,
         )
 
+    # 팀 에이전트: source_workflow_id가 있으면 워크플로를 실행하고 결과를 run으로 래핑
+    source_workflow_id = getattr(agent_def, "source_workflow_id", None)
+    if source_workflow_id:
+        return await _execute_team_agent(
+            agent_def=agent_def, workflow_id=source_workflow_id,
+            task=task, context=context, user_id=user_id, db=db,
+        )
+
     model_name = _resolve_model(agent_def)
     run_id = str(uuid.uuid4())
     run_orm = await RunRepository(db).create(
@@ -297,6 +305,50 @@ async def _run_agent(
 
     finally:
         await _update_agent_stats(agent_def.id, succeeded)
+
+
+async def _execute_team_agent(
+    agent_def,
+    workflow_id: str,
+    task: str,
+    context: Optional[str],
+    user_id: Optional[str],
+    db,
+) -> RunResponse:
+    """팀 에이전트 실행 — 연결된 워크플로를 실행하고 결과를 RunResponse로 래핑."""
+    from app.db.repositories.workflow_repo import WorkflowRepository
+    from app.services.workflow_executor import execute_workflow
+
+    workflow = await WorkflowRepository(db).get_by_id(workflow_id)
+    if not workflow:
+        run_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        async with AsyncSessionLocal() as session:
+            rr = RunRepository(session)
+            await rr.create(run_id, agent_def.id, task, user_id=user_id)
+            await rr.fail(run_id, f"팀 워크플로 '{workflow_id}'를 찾을 수 없습니다.")
+            await session.commit()
+        return RunResponse(
+            run_id=run_id, agent_id=agent_def.id, task=task,
+            status=RunStatus.FAILED,
+            error=f"팀 워크플로 '{workflow_id}'를 찾을 수 없습니다.",
+            created_at=now, completed_at=now,
+        )
+
+    full_task = task if not context else f"{task}\n\nContext: {context}"
+
+    # 워크플로 실행 (비동기 백그라운드 시작)
+    wfr = await execute_workflow(workflow, full_task, user_id, db)
+
+    # RunResponse 형식으로 래핑 — wfr_id를 run_id로 사용
+    now = datetime.now(timezone.utc)
+    return RunResponse(
+        run_id=wfr.id,
+        agent_id=agent_def.id,
+        task=task,
+        status=RunStatus.RUNNING,
+        created_at=now,
+    )
 
 
 async def _publish_progress(run_id: str, iteration: int, stop_reason: str, tool_steps: list) -> None:
