@@ -39,7 +39,8 @@ def _build_registry_context(existing_agents: "list[AgentORM]") -> str:
         return "Registry is empty."
     lines = ["Existing agents in registry:"]
     for a in existing_agents:
-        lines.append(f"- id={a.id}, name={a.name}, role={a.role}, goal={a.goal[:80]}")
+        goal_preview = (a.goal or "")[:80]
+        lines.append(f"- id={a.id}, name={a.name}, role={a.role}, goal={goal_preview}")
     return "\n".join(lines)
 
 
@@ -97,9 +98,12 @@ async def _call_claude(text: str, existing_agents: "list[AgentORM]") -> ParseInt
         (block.text for block in response.content if hasattr(block, "text")),
         "{}",
     )
-    data = json.loads(content_text)
+    try:
+        data = json.loads(content_text)
+        agents = [AgentConfig(**a) for a in data.get("agents", [])]
+    except Exception:
+        agents = []
 
-    agents = [AgentConfig(**a) for a in data.get("agents", [])]
     return ParseIntentResponse(
         agents=agents,
         raw_input=text,

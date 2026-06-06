@@ -54,9 +54,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_ALWAYS_ALLOWED = ["https://agent-orch.vercel.app", "http://localhost:3000"]
+_env_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+_allowed_origins = list(set(_ALWAYS_ALLOWED + _env_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
