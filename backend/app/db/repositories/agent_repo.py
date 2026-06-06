@@ -3,6 +3,17 @@ from sqlalchemy import select, or_
 from app.db.models.agent_orm import AgentORM
 
 
+def _apply_search_tags(stmt, search, tags):
+    if search:
+        stmt = stmt.where(
+            or_(
+                AgentORM.name.ilike(f"%{search}%"),
+                AgentORM.description.ilike(f"%{search}%"),
+            )
+        )
+    return stmt
+
+
 def _bump_patch(version: str) -> str:
     parts = version.split(".")
     try:
@@ -59,6 +70,39 @@ class AgentRepository:
                 )
             )
 
+        agents = list((await self.session.execute(stmt)).scalars().all())
+
+        if tags:
+            tag_set = set(tags)
+            agents = [a for a in agents if tag_set.intersection(set(a.tags or []))]
+
+        return agents
+
+    async def get_accessible(
+        self,
+        team_id: str | None,
+        search: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[AgentORM]:
+        """인증된 사용자가 볼 수 있는 에이전트 반환.
+
+        - team_id 있음: 해당 팀 에이전트 (public + team 가시성)
+        - team_id 없음 (admin 등): public 에이전트 + team_id가 null인 에이전트
+        """
+        if team_id:
+            stmt = select(AgentORM).where(
+                AgentORM.team_id == team_id,
+                AgentORM.visibility.in_(["public", "team"]),
+            )
+        else:
+            stmt = select(AgentORM).where(
+                or_(
+                    AgentORM.visibility == "public",
+                    AgentORM.team_id.is_(None),
+                )
+            )
+
+        stmt = _apply_search_tags(stmt, search, None)
         agents = list((await self.session.execute(stmt)).scalars().all())
 
         if tags:

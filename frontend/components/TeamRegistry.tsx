@@ -52,8 +52,8 @@ export default function TeamRegistry() {
           await api.getTeamAgents(session.user.teamId, params, session.user.accessToken)
         );
       } else if (tab === "team") {
-        // No team — fall back to all agents
-        setAgents(await api.getAgents());
+        // 팀 없음 — 접근 가능한 에이전트 (본인 생성 + public)
+        setAgents(await api.getAgents(session?.user?.accessToken));
       } else {
         setAgents(await api.getPublicAgents(params));
       }

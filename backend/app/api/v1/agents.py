@@ -28,16 +28,12 @@ async def list_agents(
     if visibility == "public":
         return await repo.get_public(search=search, tags=tag_list)
 
-    # 인증된 사용자가 팀이 있으면 팀 에이전트만 반환
-    if current_user and current_user.team_id and current_user.role != "admin":
-        return await repo.get_by_team_id(
-            current_user.team_id,
-            search=search,
-            tags=tag_list,
-            requester_team_id=current_user.team_id,
-        )
+    # 인증된 사용자: 접근 가능한 에이전트만 반환
+    if current_user:
+        return await repo.get_accessible(current_user.team_id, search=search, tags=tag_list)
 
-    return await repo.get_all()
+    # 비인증: 공개 에이전트만
+    return await repo.get_public(search=search, tags=tag_list)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
