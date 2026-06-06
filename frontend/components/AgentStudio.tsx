@@ -8,6 +8,7 @@ import {
   Loader2, CheckCircle, XCircle, RotateCcw, Cpu,
 } from "lucide-react";
 import { api, Agent, LLMProvider, MemoryType, StudioAgentInput } from "@/lib/api";
+import AgentTriggersHooks from "./AgentTriggersHooks";
 
 // ── 모델 카탈로그 ────────────────────────────────────────────────────
 const MODEL_CATALOG: Record<LLMProvider, { label: string; models: { id: string; label: string; supportsTemp: boolean; supportsTopP: boolean }[] }> = {
@@ -106,7 +107,7 @@ export default function AgentStudio({ agentId }: Props) {
   const router = useRouter();
   const token = session?.user?.accessToken;
 
-  const [tab, setTab] = useState<"basic" | "advanced">("basic");
+  const [tab, setTab] = useState<"basic" | "advanced" | "triggers">("basic");
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set(AVAILABLE_TOOLS));
   const [saving, setSaving] = useState(false);
@@ -295,7 +296,7 @@ export default function AgentStudio({ agentId }: Props) {
         <div className="w-1/2 border-r border-gray-200 overflow-y-auto bg-white">
           {/* 탭 */}
           <div className="flex border-b border-gray-200 sticky top-0 bg-white z-10">
-            {(["basic", "advanced"] as const).map((t) => (
+            {(["basic", "advanced", "triggers"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -305,7 +306,7 @@ export default function AgentStudio({ agentId }: Props) {
                     : "border-transparent text-gray-500 hover:text-gray-700"
                 }`}
               >
-                {t === "basic" ? "기본 설정" : "고급 설정"}
+                {t === "basic" ? "기본 설정" : t === "advanced" ? "고급 설정" : "트리거 & 훅"}
               </button>
             ))}
           </div>
@@ -313,6 +314,12 @@ export default function AgentStudio({ agentId }: Props) {
           <div className="p-5 space-y-5">
             {tab === "basic" ? (
               <BasicTab form={form} set={set} />
+            ) : tab === "triggers" ? (
+              savedAgentId ? (
+                <AgentTriggersHooks agentId={savedAgentId} token={token ?? undefined} />
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">먼저 에이전트를 저장해야 트리거/훅을 설정할 수 있습니다.</p>
+              )
             ) : (
               <AdvancedTab
                 form={form}

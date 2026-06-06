@@ -149,6 +149,18 @@ async def _run_agent(
     output_tokens = 0
     max_iterations = getattr(agent_def, "max_retries", None) or _DEFAULT_MAX_ITERATIONS
 
+    from app.services.hook_service import execute_hooks
+    _hook_ctx: dict = {
+        "agent_id": agent_def.id,
+        "run_id": run_id,
+        "task": task,
+        "timing": "before_run",
+        "status": "running",
+    }
+
+    # before_run 훅 실행
+    await execute_hooks(agent_def.id, "before_run", _hook_ctx)
+
     try:
         provider = getattr(agent_def, "llm_provider", "claude") or "claude"
         if provider != "claude":
@@ -262,6 +274,12 @@ async def _run_agent(
         if updated:
             await pubsub.publish_run(run_id, RunResponse.model_validate(updated).model_dump(mode="json"))
 
+        # after_run 훅 + 이벤트 트리거 실행
+        _hook_ctx.update({"timing": "after_run", "status": "completed", "result": result_str})
+        await execute_hooks(agent_def.id, "after_run", _hook_ctx)
+        from app.services.trigger_service import handle_agent_completion
+        await handle_agent_completion(agent_def.id, "completed", result_str)
+
     except Exception as e:
         async with AsyncSessionLocal() as session:
             run_repo = RunRepository(session)
@@ -270,6 +288,12 @@ async def _run_agent(
             updated = await run_repo.get_by_id(run_id)
         if updated:
             await pubsub.publish_run(run_id, RunResponse.model_validate(updated).model_dump(mode="json"))
+
+        # on_error 훅 + 이벤트 트리거 실행
+        _hook_ctx.update({"timing": "on_error", "status": "failed", "error": str(e)})
+        await execute_hooks(agent_def.id, "on_error", _hook_ctx)
+        from app.services.trigger_service import handle_agent_completion
+        await handle_agent_completion(agent_def.id, "failed")
 
     finally:
         await _update_agent_stats(agent_def.id, succeeded)

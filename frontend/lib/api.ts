@@ -441,6 +441,33 @@ export interface AgentMCPTool {
   enabled: boolean;
 }
 
+export interface Trigger {
+  id: string;
+  agent_id: string;
+  name: string;
+  type: "schedule" | "event" | "webhook";
+  config: Record<string, unknown>;
+  enabled: boolean;
+  webhook_token: string | null;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+}
+
+export interface Hook {
+  id: string;
+  agent_id: string;
+  name: string;
+  timing: "before_run" | "after_run" | "on_error";
+  action: "notify" | "run_agent" | "save_data";
+  config: Record<string, unknown>;
+  enabled: boolean;
+  execution_count: number;
+  last_executed_at: string | null;
+  last_error: string | null;
+  created_at: string;
+}
+
 export const api = {
   getAgents: (token?: string) => request<Agent[]>("/api/v1/agents/", undefined, token),
   getAgent: (id: string) => request<Agent>(`/api/v1/agents/${id}`),
@@ -664,4 +691,33 @@ export const api = {
       { method: "PUT", body: JSON.stringify(selections) },
       token
     ),
+
+  // ── 트리거 & 훅 ────────────────────────────────────────────────────
+  getTriggers: (agentId?: string, type?: string, token?: string) => {
+    const q = new URLSearchParams();
+    if (agentId) q.set("agent_id", agentId);
+    if (type) q.set("type", type);
+    return request<Trigger[]>(`/api/v1/triggers/?${q}`, undefined, token);
+  },
+  createTrigger: (data: { agent_id: string; name: string; type: string; config: object }, token?: string) =>
+    request<Trigger>("/api/v1/triggers/", { method: "POST", body: JSON.stringify(data) }, token),
+  updateTrigger: (id: string, data: { name?: string; config?: object; enabled?: boolean }, token?: string) =>
+    request<Trigger>(`/api/v1/triggers/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+  deleteTrigger: (id: string, token?: string) =>
+    request<void>(`/api/v1/triggers/${id}`, { method: "DELETE" }, token),
+  fireTrigger: (id: string, token?: string) =>
+    request<{ message: string }>(`/api/v1/triggers/${id}/fire`, { method: "POST" }, token),
+
+  getHooks: (agentId?: string, timing?: string, token?: string) => {
+    const q = new URLSearchParams();
+    if (agentId) q.set("agent_id", agentId);
+    if (timing) q.set("timing", timing);
+    return request<Hook[]>(`/api/v1/hooks/?${q}`, undefined, token);
+  },
+  createHook: (data: { agent_id: string; name: string; timing: string; action: string; config: object }, token?: string) =>
+    request<Hook>("/api/v1/hooks/", { method: "POST", body: JSON.stringify(data) }, token),
+  updateHook: (id: string, data: { name?: string; config?: object; enabled?: boolean }, token?: string) =>
+    request<Hook>(`/api/v1/hooks/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+  deleteHook: (id: string, token?: string) =>
+    request<void>(`/api/v1/hooks/${id}`, { method: "DELETE" }, token),
 };

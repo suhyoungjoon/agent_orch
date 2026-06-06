@@ -18,6 +18,8 @@ import app.db.models.roi_snapshot_orm   # noqa: F401
 import app.db.models.workflow_run_orm    # noqa: F401
 import app.db.models.mcp_server_orm      # noqa: F401
 import app.db.models.agent_mcp_tool_orm  # noqa: F401
+import app.db.models.trigger_orm         # noqa: F401
+import app.db.models.hook_orm            # noqa: F401
 
 
 def _run_migrations() -> None:
@@ -34,6 +36,18 @@ def _run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
+async def _cron_scheduler() -> None:
+    """매 분 cron 트리거를 확인하고 실행하는 백그라운드 루프."""
+    import asyncio
+    from app.services.trigger_service import tick_schedule_triggers
+    while True:
+        try:
+            await tick_schedule_triggers()
+        except Exception as e:
+            print(f"⚠️  cron 스케줄러 오류: {e}")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
@@ -46,7 +60,11 @@ async def lifespan(app: FastAPI):
         print("⚠️  마이그레이션 타임아웃 — DB 연결을 확인하세요.")
     except Exception as e:
         print(f"⚠️  마이그레이션 오류: {e}")
+
+    # cron 스케줄러 백그라운드 태스크 시작
+    scheduler_task = asyncio.create_task(_cron_scheduler())
     yield
+    scheduler_task.cancel()
     await engine.dispose()
 
 
