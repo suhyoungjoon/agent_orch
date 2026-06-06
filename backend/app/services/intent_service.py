@@ -81,6 +81,18 @@ def _mock_response(text: str, existing_agents: "list[AgentORM]") -> ParseIntentR
     )
 
 
+def _strip_markdown(text: str) -> str:
+    """Claude가 JSON을 마크다운 코드블록으로 감쌀 경우 제거."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        lines = lines[1:]  # 첫 줄 (```json 등) 제거
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]  # 마지막 ``` 제거
+        text = "\n".join(lines).strip()
+    return text
+
+
 async def _call_claude(text: str, existing_agents: "list[AgentORM]") -> ParseIntentResponse:
     import anthropic
 
@@ -96,13 +108,21 @@ async def _call_claude(text: str, existing_agents: "list[AgentORM]") -> ParseInt
 
     content_text = next(
         (block.text for block in response.content if hasattr(block, "text")),
-        "{}",
+        None,
     )
+
+    if not content_text:
+        return _mock_response(text, existing_agents)
+
     try:
-        data = json.loads(content_text)
+        data = json.loads(_strip_markdown(content_text))
         agents = [AgentConfig(**a) for a in data.get("agents", [])]
     except Exception:
         agents = []
+
+    # Claude 응답 파싱에 실패했거나 빈 결과면 mock으로 대체
+    if not agents:
+        return _mock_response(text, existing_agents)
 
     return ParseIntentResponse(
         agents=agents,

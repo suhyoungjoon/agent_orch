@@ -108,15 +108,21 @@ export default function ParseIntent() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {result.agents.map((agent) => (
-              <AgentConfigCard
-                key={agent.execution_order}
-                agent={agent}
-                token={session?.user?.accessToken}
-              />
-            ))}
-          </div>
+          {result.agents.length === 0 ? (
+            <div className="rounded-lg bg-yellow-50 border border-yellow-100 px-4 py-3 text-sm text-yellow-700">
+              추천 에이전트를 생성하지 못했습니다. 다시 시도하거나 직접 에이전트를 등록해주세요.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {result.agents.map((agent) => (
+                <AgentConfigCard
+                  key={agent.execution_order}
+                  agent={agent}
+                  token={session?.user?.accessToken}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>
