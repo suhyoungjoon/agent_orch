@@ -36,6 +36,36 @@ def _run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
+async def _seed_admin() -> None:
+    """서버 최초 기동 시 기본 admin 계정이 없으면 자동 생성."""
+    from app.db.repositories.user_repo import UserRepository
+    from app.db.repositories.team_repo import TeamRepository
+    from app.core.security import hash_password
+
+    ADMIN_EMAIL = "tjdudwns@gmail.com"
+    ADMIN_PASSWORD = "1111"
+    ADMIN_NAME = "Admin"
+    TEAM_NAME = "Default Team"
+
+    async with AsyncSessionLocal() as db:
+        repo = UserRepository(db)
+        if await repo.get_by_email(ADMIN_EMAIL):
+            return  # 이미 존재하면 건너뜀
+
+        team_repo = TeamRepository(db)
+        team = await team_repo.create(TEAM_NAME)
+        await repo.create(
+            email=ADMIN_EMAIL,
+            name=ADMIN_NAME,
+            hashed_password=hash_password(ADMIN_PASSWORD),
+            role="admin",
+            team_id=team.id,
+            provider="credentials",
+        )
+        await db.commit()
+        print(f"✅  기본 admin 계정 생성 완료: {ADMIN_EMAIL}")
+
+
 async def _cron_scheduler() -> None:
     """매 분 cron 트리거를 확인하고 실행하는 백그라운드 루프."""
     import asyncio
@@ -60,6 +90,12 @@ async def lifespan(app: FastAPI):
         print("⚠️  마이그레이션 타임아웃 — DB 연결을 확인하세요.")
     except Exception as e:
         print(f"⚠️  마이그레이션 오류: {e}")
+
+    # 기본 admin 시드
+    try:
+        await _seed_admin()
+    except Exception as e:
+        print(f"⚠️  admin 시드 오류: {e}")
 
     # cron 스케줄러 백그라운드 태스크 시작
     scheduler_task = asyncio.create_task(_cron_scheduler())

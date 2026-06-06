@@ -7,8 +7,8 @@ import { Bot, Mail, Lock, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("tjdudwns@gmail.com");
+  const [password, setPassword] = useState("1111");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
