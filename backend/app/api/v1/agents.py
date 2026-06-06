@@ -19,6 +19,7 @@ async def list_agents(
     search: str | None = Query(None),
     tags: str | None = Query(None, description="쉼표 구분 태그"),
     visibility: str | None = Query(None),
+    current_user: UserORM | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     repo = AgentRepository(db)
@@ -26,6 +27,15 @@ async def list_agents(
 
     if visibility == "public":
         return await repo.get_public(search=search, tags=tag_list)
+
+    # 인증된 사용자가 팀이 있으면 팀 에이전트만 반환
+    if current_user and current_user.team_id and current_user.role != "admin":
+        return await repo.get_by_team_id(
+            current_user.team_id,
+            search=search,
+            tags=tag_list,
+            requester_team_id=current_user.team_id,
+        )
 
     return await repo.get_all()
 

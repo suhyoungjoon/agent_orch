@@ -9,11 +9,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useSession } from "next-auth/react";
-import { api, Agent, Workflow, WorkflowNode, WorkflowEdge } from "@/lib/api";
+import { api, Agent, Workflow, WorkflowNode, WorkflowEdge, WorkflowRun, NodeRunResult } from "@/lib/api";
 import WorkflowAgentNode, { AgentNodeData } from "./WorkflowAgentNode";
 import {
   Save, ArrowLeft, AlertTriangle, CheckCircle,
-  XCircle, Loader2, GripVertical,
+  XCircle, Loader2, GripVertical, Play, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 // ── 충돌 감지 ─────────────────────────────────────────────────────────────────
@@ -115,13 +115,7 @@ const ROLE_COLORS: Record<string, string> = {
   coder:      "bg-green-100 text-green-700 border-green-200",
 };
 
-function AgentPalette({
-  agents,
-  loading,
-}: {
-  agents: Agent[];
-  loading: boolean;
-}) {
+function AgentPalette({ agents, loading }: { agents: Agent[]; loading: boolean }) {
   function onDragStart(e: React.DragEvent, agent: Agent) {
     e.dataTransfer.setData("application/agentflow-agent", JSON.stringify(agent));
     e.dataTransfer.effectAllowed = "move";
@@ -137,6 +131,10 @@ function AgentPalette({
       {loading ? (
         <div className="flex items-center justify-center py-8 text-gray-400">
           <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : agents.length === 0 ? (
+        <div className="p-3 text-[11px] text-gray-400 text-center py-8">
+          등록된 에이전트가 없습니다.<br />먼저 에이전트를 생성하세요.
         </div>
       ) : (
         <div className="p-2 space-y-1.5">
@@ -209,6 +207,143 @@ function ConflictPanel({ conflicts }: { conflicts: Conflict[] }) {
   );
 }
 
+// ── 실행 결과 패널 ────────────────────────────────────────────────────────────
+
+function RunResultPanel({
+  run,
+  nodes,
+}: {
+  run: WorkflowRun;
+  nodes: Node[];
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const statusColor = {
+    pending:   "bg-gray-100 text-gray-600",
+    running:   "bg-blue-100 text-blue-700",
+    completed: "bg-green-100 text-green-700",
+    failed:    "bg-red-100 text-red-700",
+  };
+
+  return (
+    <div className="border-t border-gray-200 bg-white max-h-56 overflow-y-auto">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 sticky top-0 bg-white">
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[run.status]}`}>
+          {run.status === "pending" ? "대기중"
+           : run.status === "running" ? "실행중"
+           : run.status === "completed" ? "완료"
+           : "실패"}
+        </span>
+        <span className="text-xs text-gray-500 flex-1 truncate">작업: {run.task}</span>
+        {run.error && (
+          <span className="text-xs text-red-500 truncate max-w-xs">{run.error}</span>
+        )}
+      </div>
+
+      <div className="divide-y divide-gray-50">
+        {nodes.map((node) => {
+          const nodeResult: NodeRunResult | undefined = run.node_results[node.id];
+          const label = (node.data as AgentNodeData).label;
+          const isExpanded = expanded === node.id;
+
+          if (!nodeResult) return (
+            <div key={node.id} className="flex items-center gap-2 px-4 py-2 text-xs text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-gray-200 shrink-0" />
+              {label}
+            </div>
+          );
+
+          return (
+            <div key={node.id} className="px-4 py-2">
+              <button
+                onClick={() => setExpanded(isExpanded ? null : node.id)}
+                className="w-full flex items-center gap-2 text-left"
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                  nodeResult.status === "running"   ? "bg-blue-400 animate-pulse"
+                  : nodeResult.status === "completed" ? "bg-green-400"
+                  : nodeResult.status === "failed"    ? "bg-red-400"
+                  : "bg-gray-300"
+                }`} />
+                <span className="text-xs font-medium text-gray-700 flex-1 truncate">{label}</span>
+                {nodeResult.status === "running" && <Loader2 size={11} className="animate-spin text-blue-500" />}
+                {nodeResult.result && (
+                  isExpanded ? <ChevronUp size={12} className="text-gray-400" /> : <ChevronDown size={12} className="text-gray-400" />
+                )}
+              </button>
+
+              {isExpanded && nodeResult.result && (
+                <div className="mt-2 text-[11px] text-gray-600 bg-gray-50 rounded-lg p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {nodeResult.result}
+                </div>
+              )}
+              {isExpanded && nodeResult.error && (
+                <div className="mt-2 text-[11px] text-red-600 bg-red-50 rounded-lg p-2">
+                  {nodeResult.error}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── 실행 태스크 입력 모달 ─────────────────────────────────────────────────────
+
+function RunModal({
+  onRun,
+  onClose,
+  running,
+}: {
+  onRun: (task: string) => void;
+  onClose: () => void;
+  running: boolean;
+}) {
+  const [task, setTask] = useState("");
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+        <h3 className="font-semibold text-gray-900">워크플로우 실행</h3>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            작업 내용 <span className="text-gray-400 font-normal">(각 에이전트에 공통으로 전달됩니다)</span>
+          </label>
+          <textarea
+            value={task}
+            onChange={(e) => setTask(e.target.value)}
+            placeholder="예: 경쟁사 분석 보고서를 작성해줘"
+            rows={3}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+            autoFocus
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            취소
+          </button>
+          <button
+            disabled={!task.trim() || running}
+            onClick={() => onRun(task.trim())}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            실행 시작
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 빌더 ─────────────────────────────────────────────────────────────────
 
 const NODE_TYPES = { agentNode: WorkflowAgentNode };
@@ -235,7 +370,7 @@ export default function WorkflowBuilder({
   workflowId,
   onBack,
 }: {
-  workflowId: string | null;  // null = new workflow
+  workflowId: string | null;
   onBack: () => void;
 }) {
   const { data: session } = useSession();
@@ -252,27 +387,32 @@ export default function WorkflowBuilder({
   const [agentsLoading, setAgentsLoading] = useState(true);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
+  const [showRunModal, setShowRunModal] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rfInstanceRef = useRef<ReactFlowInstance<any, any> | null>(null);
 
-  // 에이전트 목록 로드
+  // 실제 등록된 에이전트 로드 (팀 우선, 없으면 토큰 포함해 전체 조회)
   useEffect(() => {
+    if (token === undefined) return;
     (async () => {
       try {
         const teamId = session?.user?.teamId;
         const list = teamId
           ? await api.getTeamAgents(teamId, {}, token)
-          : await api.getAgents();
+          : await api.getAgents(token);
         setAgents(list);
       } finally {
         setAgentsLoading(false);
       }
     })();
-  }, [session]);
+  }, [session, token]);
 
   // 기존 워크플로 로드
   useEffect(() => {
-    if (!workflowId) return;
+    if (!workflowId || !token) return;
     (async () => {
       const wf: Workflow = await api.getWorkflow(workflowId, token);
       setWfName(wf.name);
@@ -281,16 +421,35 @@ export default function WorkflowBuilder({
     })();
   }, [workflowId, token]);
 
+  // 실행 중 2초마다 상태 폴링
+  useEffect(() => {
+    if (!activeRun || activeRun.status === "completed" || activeRun.status === "failed") return;
+    const wfId = currentId;
+    if (!wfId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.getWorkflowRun(wfId, activeRun.id, token);
+        setActiveRun(updated);
+        if (updated.status === "completed" || updated.status === "failed") {
+          setRunning(false);
+          clearInterval(interval);
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [activeRun, currentId, token]);
+
   // 엣지 연결
   const onConnect = useCallback(
     (params: Connection) =>
-      setEdges((eds) =>
-        addEdge({ ...params, id: `e-${Date.now()}` }, eds)
-      ),
+      setEdges((eds) => addEdge({ ...params, id: `e-${Date.now()}` }, eds)),
     [setEdges],
   );
 
-  // 드래그 오버 (기본 동작 방지)
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
@@ -346,14 +505,42 @@ export default function WorkflowBuilder({
     }
   }
 
-  // 충돌 감지 (메모이즈)
+  // 실행
+  async function handleRun(task: string) {
+    let wfId = currentId;
+
+    // 저장되지 않은 워크플로는 먼저 저장
+    if (!wfId) {
+      try {
+        const payload = rfToApi(nodes, edges);
+        const created = await api.createWorkflow({ name: wfName, ...payload }, token);
+        setCurrentId(created.id);
+        wfId = created.id;
+      } catch {
+        setSaveMsg("실행 전 저장에 실패했습니다.");
+        return;
+      }
+    }
+
+    setShowRunModal(false);
+    setRunning(true);
+
+    try {
+      const run = await api.runWorkflow(wfId, task, token);
+      setActiveRun(run);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "실행 시작 실패");
+      setRunning(false);
+    }
+  }
+
+  // 충돌 감지
   const conflicts = useMemo<Conflict[]>(() => [
     ...detectCycles(nodes, edges),
     ...detectDuplicates(nodes),
     ...detectSchemaMismatches(edges, nodes, agentMap),
   ], [nodes, edges, agentMap]);
 
-  // 충돌 있는 노드 id 집합
   const conflictNodeIds = useMemo(() => {
     const ids = new Set<string>();
     if (conflicts.some((c) => c.type === "cycle")) {
@@ -368,15 +555,21 @@ export default function WorkflowBuilder({
     return ids;
   }, [conflicts, nodes]);
 
-  // 충돌 플래그를 노드 data에 반영
+  // 노드에 충돌 + 실행 상태 반영
   const displayNodes = useMemo(
     () =>
       nodes.map((n) => ({
         ...n,
-        data: { ...n.data, hasConflict: conflictNodeIds.has(n.id) },
+        data: {
+          ...n.data,
+          hasConflict: conflictNodeIds.has(n.id),
+          runStatus: activeRun?.node_results[n.id]?.status ?? undefined,
+        },
       })),
-    [nodes, conflictNodeIds],
+    [nodes, conflictNodeIds, activeRun],
   );
+
+  const hasErrors = conflicts.some((c) => c.severity === "error");
 
   return (
     <div className="flex flex-col h-full">
@@ -398,12 +591,22 @@ export default function WorkflowBuilder({
           </span>
         )}
 
-        {conflicts.some((c) => c.severity === "error") && (
+        {hasErrors && (
           <span className="flex items-center gap-1 text-xs text-red-500">
             <XCircle size={13} />
             {conflicts.filter((c) => c.severity === "error").length}개 오류
           </span>
         )}
+
+        {/* 실행 버튼 */}
+        <button
+          onClick={() => setShowRunModal(true)}
+          disabled={running || nodes.length === 0 || hasErrors}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+        >
+          {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+          {running ? "실행 중..." : "실행"}
+        </button>
 
         <button
           onClick={handleSave}
@@ -419,37 +622,53 @@ export default function WorkflowBuilder({
       <div className="flex flex-1 min-h-0">
         <AgentPalette agents={agents} loading={agentsLoading} />
 
-        {/* React Flow 캔버스 */}
-        <div className="flex-1 min-w-0" onDragOver={onDragOver} onDrop={onDrop}>
-          <ReactFlow
-            nodes={displayNodes as Node[]}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onInit={(instance) => { rfInstanceRef.current = instance; }}
-            nodeTypes={NODE_TYPES}
-            fitView
-            deleteKeyCode="Backspace"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e5e7eb" />
-            <Controls />
-            <MiniMap
-              nodeColor={(n) => {
-                const role = (n.data as AgentNodeData).role;
-                return role === "researcher" ? "#3b82f6"
-                  : role === "writer" ? "#a855f7"
-                  : role === "analyst" ? "#f59e0b"
-                  : role === "coder" ? "#22c55e"
-                  : "#9ca3af";
-              }}
-              maskColor="rgba(255,255,255,0.7)"
-            />
-          </ReactFlow>
+        {/* React Flow 캔버스 + 실행 결과 패널 */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-h-0" onDragOver={onDragOver} onDrop={onDrop}>
+            <ReactFlow
+              nodes={displayNodes as Node[]}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onInit={(instance) => { rfInstanceRef.current = instance; }}
+              nodeTypes={NODE_TYPES}
+              fitView
+              deleteKeyCode="Backspace"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e5e7eb" />
+              <Controls />
+              <MiniMap
+                nodeColor={(n) => {
+                  const role = (n.data as AgentNodeData).role;
+                  return role === "researcher" ? "#3b82f6"
+                    : role === "writer" ? "#a855f7"
+                    : role === "analyst" ? "#f59e0b"
+                    : role === "coder" ? "#22c55e"
+                    : "#9ca3af";
+                }}
+                maskColor="rgba(255,255,255,0.7)"
+              />
+            </ReactFlow>
+          </div>
+
+          {/* 실행 결과 패널 (실행 시 표시) */}
+          {activeRun && (
+            <RunResultPanel run={activeRun} nodes={nodes} />
+          )}
         </div>
 
         <ConflictPanel conflicts={conflicts} />
       </div>
+
+      {/* 실행 태스크 입력 모달 */}
+      {showRunModal && (
+        <RunModal
+          onRun={handleRun}
+          onClose={() => setShowRunModal(false)}
+          running={running}
+        />
+      )}
     </div>
   );
 }

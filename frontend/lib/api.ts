@@ -245,6 +245,27 @@ export interface ParseIntentResult {
   is_mock: boolean;
 }
 
+export interface NodeRunResult {
+  status: "pending" | "running" | "completed" | "failed";
+  agent_id: string;
+  agent_name: string | null;
+  result: string | null;
+  error: string | null;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  task: string;
+  node_results: Record<string, NodeRunResult>;
+  error: string | null;
+  created_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 // ── 6대 거버넌스 갭 타입 ────────────────────────────────────────────
 export interface AuditLog {
   id: string;
@@ -349,7 +370,7 @@ export interface SprawlReport {
 }
 
 export const api = {
-  getAgents: () => request<Agent[]>("/api/v1/agents/"),
+  getAgents: (token?: string) => request<Agent[]>("/api/v1/agents/", undefined, token),
   getAgent: (id: string) => request<Agent>(`/api/v1/agents/${id}`),
   runAgent: (id: string, task: string, context?: string, token?: string, requireApproval?: boolean) =>
     request<Run>(
@@ -416,6 +437,16 @@ export const api = {
     request<Workflow>(`/api/v1/workflows/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
   deleteWorkflow: (id: string, token?: string) =>
     request<void>(`/api/v1/workflows/${id}`, { method: "DELETE" }, token),
+  runWorkflow: (workflowId: string, task: string, token?: string) =>
+    request<WorkflowRun>(
+      `/api/v1/workflows/${workflowId}/run`,
+      { method: "POST", body: JSON.stringify({ task }) },
+      token
+    ),
+  getWorkflowRuns: (workflowId: string, token?: string) =>
+    request<WorkflowRun[]>(`/api/v1/workflows/${workflowId}/runs`, undefined, token),
+  getWorkflowRun: (workflowId: string, runId: string, token?: string) =>
+    request<WorkflowRun>(`/api/v1/workflows/${workflowId}/runs/${runId}`, undefined, token),
   getEnterpriseReport: (token?: string) =>
     request<EnterpriseReportData>("/api/v1/reports/enterprise", undefined, token),
   getSynergy: (agentId: string, opts?: { limit?: number; useClaude?: boolean }, token?: string) => {

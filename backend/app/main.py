@@ -15,6 +15,7 @@ import app.db.models.agent_credential_orm  # noqa: F401  — ForeignKey("agents.
 import app.db.models.anomaly_event_orm  # noqa: F401
 import app.db.models.a2a_chain_orm      # noqa: F401
 import app.db.models.roi_snapshot_orm   # noqa: F401
+import app.db.models.workflow_run_orm  # noqa: F401
 
 
 def _run_migrations() -> None:
