@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Agent, AgentInput, api } from "@/lib/api";
-import { X, Loader2, Zap, Info } from "lucide-react";
+import { Agent, AgentInput, AgentVisibility, api } from "@/lib/api";
+import { X, Loader2, Sparkles } from "lucide-react";
 
 const ROLES = ["researcher", "writer", "analyst", "coder"] as const;
 
@@ -72,14 +72,17 @@ export default function AgentFormModal({ agent, initialData, onClose }: Props) {
         TOOLS.some((tool) => tool.id === t)
       );
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string; role: string; goal: string; backstory: string;
+    description: string; version: string; visibility: string;
+  }>({
     name: initialData?.name ?? agent?.name ?? "",
-    role: (initialData?.role ?? agent?.role ?? "researcher") as typeof ROLES[number],
+    role: initialData?.role ?? agent?.role ?? "researcher",
     goal: initialData?.goal ?? agent?.goal ?? "",
     backstory: initialData?.backstory ?? agent?.backstory ?? "",
     description: agent?.description ?? "",
     version: agent?.version ?? "1.0.0",
-    visibility: (agent?.visibility ?? "team") as "public" | "team" | "private",
+    visibility: agent?.visibility ?? "team",
   });
   const [selectedTools, setSelectedTools] = useState<Set<string>>(
     new Set(defaultTools)
@@ -113,7 +116,7 @@ export default function AgentFormModal({ agent, initialData, onClose }: Props) {
       description: form.description || undefined,
       version: form.version,
       tags: Array.from(selectedTools),
-      visibility: form.visibility,
+      visibility: form.visibility as AgentVisibility,
     };
 
     try {
@@ -144,7 +147,7 @@ export default function AgentFormModal({ agent, initialData, onClose }: Props) {
               {agent ? "에이전트 편집" : "새 에이전트"}
             </h2>
             <div className="flex items-center gap-1 mt-0.5">
-              <Zap size={11} className="text-amber-500" />
+              <Sparkles size={11} className="text-amber-500" />
               <span className="text-xs text-gray-400">Claude AI 기반으로 실제 작업을 수행합니다</span>
             </div>
           </div>
@@ -223,13 +226,12 @@ export default function AgentFormModal({ agent, initialData, onClose }: Props) {
             {/* 도구 선택 */}
             <div className="col-span-2">
               <div className="flex items-center gap-1.5 mb-2">
-                <label className="text-xs font-medium text-gray-700">사용 도구</label>
-                <div className="group relative">
-                  <Info size={12} className="text-gray-400 cursor-help" />
-                  <div className="absolute bottom-5 left-0 hidden group-hover:block bg-gray-800 text-white text-xs rounded-lg px-3 py-2 w-52 z-10">
-                    선택한 도구를 Claude가 작업 중 자동으로 호출합니다. 미선택 시 모든 도구가 활성화됩니다.
-                  </div>
-                </div>
+                <label
+                  className="text-xs font-medium text-gray-700"
+                  title="선택한 도구를 Claude가 작업 중 자동으로 호출합니다. 미선택 시 모든 도구가 활성화됩니다."
+                >
+                  사용 도구
+                </label>
               </div>
               <div className="space-y-2">
                 {TOOLS.map((tool) => (
