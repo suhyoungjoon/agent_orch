@@ -225,6 +225,11 @@ async def _run_agent(
                 )
                 break
 
+            if response.stop_reason == "pause_turn":
+                # 서버 사이드 도구(내장 웹 검색 등)의 루프 한도 도달 — 이어서 계속
+                messages.append({"role": "assistant", "content": response.content})
+                continue
+
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
                 tool_results = []

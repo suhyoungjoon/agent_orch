@@ -58,44 +58,6 @@ def _get_datetime() -> str:
     return now.strftime("%Y년 %m월 %d일 %H:%M UTC (%A)")
 
 
-# ── 웹 검색 (Brave Search API) ───────────────────────────────────────
-async def _web_search(query: str) -> str:
-    from app.core.config import settings
-
-    api_key = settings.brave_search_api_key
-    if not api_key:
-        return "웹 검색을 사용하려면 BRAVE_SEARCH_API_KEY 환경변수를 설정하세요."
-
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                "https://api.search.brave.com/res/v1/web/search",
-                params={"q": query, "count": 5, "search_lang": "ko"},
-                headers={
-                    "Accept": "application/json",
-                    "Accept-Encoding": "gzip",
-                    "X-Subscription-Token": api_key,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        results = data.get("web", {}).get("results", [])
-        if not results:
-            return f"'{query}'에 대한 검색 결과가 없습니다."
-
-        lines = [f"'{query}' 검색 결과:\n"]
-        for i, r in enumerate(results, 1):
-            title = r.get("title", "")
-            url = r.get("url", "")
-            desc = r.get("description", "")
-            lines.append(f"{i}. **{title}**\n   {desc}\n   URL: {url}")
-
-        return "\n".join(lines)
-    except Exception as e:
-        return f"웹 검색 오류: {e}"
-
-
 # ── URL 페이지 내용 가져오기 ─────────────────────────────────────────
 async def _fetch_webpage(url: str) -> str:
     try:
@@ -115,15 +77,8 @@ async def _fetch_webpage(url: str) -> str:
 # ── Claude Tool Use API 스키마 정의 ──────────────────────────────────
 TOOL_SCHEMAS = [
     {
+        "type": "web_search_20260209",
         "name": "web_search",
-        "description": "DuckDuckGo로 웹을 검색합니다. 최신 정보, 사실 확인, 개념 설명이 필요할 때 사용합니다.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "검색할 키워드 또는 질문"},
-            },
-            "required": ["query"],
-        },
     },
     {
         "name": "calculate",
@@ -371,8 +326,6 @@ async def execute_tool(name: str, inputs: dict[str, Any]) -> str:
                 inputs["scenario_id"], inputs["message"], inputs.get("level", "ERROR"))
 
     # ── 기존 내장 도구 ────────────────────────────────────────────────
-    if name == "web_search":
-        return await _web_search(inputs.get("query", ""))
     if name == "calculate":
         return _calculate(inputs.get("expression", ""))
     if name == "get_current_datetime":
