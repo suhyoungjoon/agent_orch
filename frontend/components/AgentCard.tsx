@@ -12,6 +12,9 @@ const ROLE_COLORS: Record<Agent["role"], string> = {
   writer: "bg-purple-100 text-purple-700",
   analyst: "bg-amber-100 text-amber-700",
   coder: "bg-green-100 text-green-700",
+  planner: "bg-indigo-100 text-indigo-700",
+  developer: "bg-teal-100 text-teal-700",
+  operator: "bg-orange-100 text-orange-700",
 };
 
 const ROLE_LABELS: Record<Agent["role"], string> = {
@@ -19,6 +22,9 @@ const ROLE_LABELS: Record<Agent["role"], string> = {
   writer: "Writer",
   analyst: "Analyst",
   coder: "Coder",
+  planner: "기획",
+  developer: "개발",
+  operator: "운영",
 };
 
 interface Props {

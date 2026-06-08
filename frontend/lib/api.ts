@@ -7,7 +7,7 @@ export type MemoryType = "none" | "short" | "long";
 export interface Agent {
   id: string;
   name: string;
-  role: "researcher" | "writer" | "analyst" | "coder";
+  role: "researcher" | "writer" | "analyst" | "coder" | "planner" | "developer" | "operator";
   goal: string;
   backstory: string;
   status: "idle" | "running" | "completed" | "failed";

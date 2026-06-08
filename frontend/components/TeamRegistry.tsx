@@ -256,6 +256,9 @@ function PublicAgentCard({
     writer: "bg-purple-100 text-purple-700",
     analyst: "bg-amber-100 text-amber-700",
     coder: "bg-green-100 text-green-700",
+    planner: "bg-indigo-100 text-indigo-700",
+    developer: "bg-teal-100 text-teal-700",
+    operator: "bg-orange-100 text-orange-700",
   };
 
   async function handleFork() {
