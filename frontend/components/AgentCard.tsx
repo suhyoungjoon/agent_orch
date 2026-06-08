@@ -144,6 +144,7 @@ export default function AgentCard({ agent }: Props) {
           {agent.description && (
             <p className="text-sm text-gray-500 mt-0.5">{agent.description}</p>
           )}
+          <ModelBadge provider={agent.llm_provider} modelName={agent.model_name} />
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${ROLE_COLORS[agent.role]}`}>
@@ -328,6 +329,33 @@ function SchemaView({ schema }: { schema: Record<string, unknown> }) {
         </div>
       ))}
     </div>
+  );
+}
+
+const MODEL_SHORT: Record<string, string> = {
+  "claude-sonnet-4-6":         "Sonnet 4.6",
+  "claude-opus-4-8":           "Opus 4.8",
+  "claude-haiku-4-5-20251001": "Haiku 4.5",
+  "gpt-4o":                    "GPT-4o",
+  "gpt-4o-mini":               "GPT-4o Mini",
+  "gemini-1.5-pro":            "Gemini 1.5",
+  "gemini-2.0-flash":          "Gemini 2.0",
+};
+
+function ModelBadge({ provider, modelName }: { provider: string; modelName: string | null }) {
+  const label = modelName ? (MODEL_SHORT[modelName] ?? modelName) : provider;
+  const isAnthropic = provider === "claude";
+  return (
+    <span
+      className={`inline-flex items-center text-[10px] font-mono px-1.5 py-0.5 rounded ${
+        isAnthropic
+          ? "bg-violet-50 text-violet-600"
+          : "bg-gray-100 text-gray-500"
+      }`}
+      title={`${provider} · ${modelName ?? ""}`}
+    >
+      {label}
+    </span>
   );
 }
 

@@ -119,6 +119,8 @@ export interface AgentInput {
   tags?: string[];
   team_id?: string | null;
   visibility?: AgentVisibility;
+  llm_provider?: LLMProvider;
+  model_name?: string | null;
 }
 
 export interface TeamAgentsParams {

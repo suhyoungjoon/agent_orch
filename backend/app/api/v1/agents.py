@@ -67,6 +67,16 @@ async def create_agent(
         tags=body.tags,
         version=body.version,
         visibility=body.visibility,
+        llm_provider=body.llm_provider,
+        model_name=body.model_name,
+        temperature=body.temperature,
+        max_tokens=body.max_tokens,
+        top_p=body.top_p,
+        system_prompt=body.system_prompt,
+        memory_type=body.memory_type,
+        max_retries=body.max_retries,
+        timeout_seconds=body.timeout_seconds,
+        is_studio_agent=body.is_studio_agent,
     )
     return await AgentRepository(db).create(orm)
 
