@@ -15,6 +15,7 @@ from .a2a import router as a2a_router
 from .roi import router as roi_router
 from .mcp import router as mcp_router
 from .triggers import router as triggers_router, hook_router, webhook_router
+from .simulation import router as simulation_router
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_router)
@@ -36,3 +37,5 @@ v1_router.include_router(mcp_router)
 v1_router.include_router(triggers_router)
 v1_router.include_router(hook_router)
 v1_router.include_router(webhook_router)
+# 시뮬레이션
+v1_router.include_router(simulation_router)

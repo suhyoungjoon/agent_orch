@@ -20,6 +20,7 @@ import app.db.models.mcp_server_orm      # noqa: F401
 import app.db.models.agent_mcp_tool_orm  # noqa: F401
 import app.db.models.trigger_orm         # noqa: F401
 import app.db.models.hook_orm            # noqa: F401
+import app.db.models.world_state_orm     # noqa: F401
 
 
 def _run_migrations() -> None:
@@ -103,6 +104,16 @@ async def lifespan(app: FastAPI):
         await _seed_admin()
     except Exception as e:
         print(f"⚠️  admin 시드 오류: {e}")
+
+    # MFA 시뮬레이션 시나리오 시드
+    try:
+        from app.services.world_state_service import ensure_mfa_scenario
+        async with AsyncSessionLocal() as db:
+            await ensure_mfa_scenario(db)
+            await db.commit()
+        print("✅  MFA 시뮬레이션 시나리오 준비 완료")
+    except Exception as e:
+        print(f"⚠️  시뮬레이션 시드 오류: {e}")
 
     # cron 스케줄러 백그라운드 태스크 시작
     scheduler_task = asyncio.create_task(_cron_scheduler())
