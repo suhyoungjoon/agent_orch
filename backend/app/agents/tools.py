@@ -58,28 +58,40 @@ def _get_datetime() -> str:
     return now.strftime("%Y년 %m월 %d일 %H:%M UTC (%A)")
 
 
-# ── 웹 검색 (DuckDuckGo Instant Answer API — API 키 불필요) ─────────
+# ── 웹 검색 (Brave Search API) ───────────────────────────────────────
 async def _web_search(query: str) -> str:
+    from app.core.config import settings
+
+    api_key = settings.brave_search_api_key
+    if not api_key:
+        return "웹 검색을 사용하려면 BRAVE_SEARCH_API_KEY 환경변수를 설정하세요."
+
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
-                "https://api.duckduckgo.com/",
-                params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
-                follow_redirects=True,
+                "https://api.search.brave.com/res/v1/web/search",
+                params={"q": query, "count": 5, "search_lang": "ko"},
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": api_key,
+                },
             )
+            resp.raise_for_status()
             data = resp.json()
 
-        lines = []
-        if data.get("AbstractText"):
-            lines.append(f"요약: {data['AbstractText']}")
-            if data.get("AbstractSource"):
-                lines.append(f"출처: {data['AbstractSource']}")
+        results = data.get("web", {}).get("results", [])
+        if not results:
+            return f"'{query}'에 대한 검색 결과가 없습니다."
 
-        for topic in data.get("RelatedTopics", [])[:4]:
-            if isinstance(topic, dict) and topic.get("Text"):
-                lines.append(f"- {topic['Text']}")
+        lines = [f"'{query}' 검색 결과:\n"]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "")
+            url = r.get("url", "")
+            desc = r.get("description", "")
+            lines.append(f"{i}. **{title}**\n   {desc}\n   URL: {url}")
 
-        return "\n".join(lines) if lines else f"'{query}'에 대한 즉각적인 검색 결과가 없습니다. 다른 키워드로 시도해보세요."
+        return "\n".join(lines)
     except Exception as e:
         return f"웹 검색 오류: {e}"
 
