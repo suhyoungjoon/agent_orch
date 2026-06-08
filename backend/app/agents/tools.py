@@ -146,7 +146,138 @@ TOOL_SCHEMAS = [
     },
 ]
 
+# ── 시뮬레이션 도구 스키마 ────────────────────────────────────────────
+_SIM_TOOL_NAMES = {
+    "read_requirements", "read_tickets", "create_ticket", "update_ticket_status",
+    "write_design_doc", "commit_code", "deploy", "read_logs", "create_incident",
+}
+
+SIM_TOOL_SCHEMAS = [
+    {
+        "name": "read_requirements",
+        "description": "가상 조직의 고객 요구사항 목록을 조회합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "status":      {"type": "string", "description": "필터: confirmed | pending (생략 시 전체)"},
+            },
+            "required": ["scenario_id"],
+        },
+    },
+    {
+        "name": "read_tickets",
+        "description": "가상 조직의 작업 티켓 목록을 조회합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id":   {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "status":        {"type": "string", "description": "필터: open | in_progress | review | done | closed"},
+                "assignee_role": {"type": "string", "description": "담당 역할 필터: planner | developer | operator"},
+            },
+            "required": ["scenario_id"],
+        },
+    },
+    {
+        "name": "create_ticket",
+        "description": "가상 조직에 새 작업 티켓을 생성합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id":   {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "title":         {"type": "string", "description": "티켓 제목"},
+                "assignee_role": {"type": "string", "description": "담당 역할: planner | developer | operator"},
+                "description":   {"type": "string", "description": "티켓 상세 설명"},
+                "priority":      {"type": "string", "description": "우선순위: low | medium | high | critical"},
+            },
+            "required": ["scenario_id", "title", "assignee_role"],
+        },
+    },
+    {
+        "name": "update_ticket_status",
+        "description": "작업 티켓의 상태를 변경합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "ticket_id":   {"type": "string", "description": "티켓 ID (예: TICK-001)"},
+                "status":      {"type": "string", "description": "새 상태: open | in_progress | review | done | closed"},
+            },
+            "required": ["scenario_id", "ticket_id", "status"],
+        },
+    },
+    {
+        "name": "write_design_doc",
+        "description": "설계 문서를 작성하고 코드베이스에 기록합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "title":       {"type": "string", "description": "문서 제목"},
+                "content":     {"type": "string", "description": "문서 내용 (마크다운)"},
+            },
+            "required": ["scenario_id", "title", "content"],
+        },
+    },
+    {
+        "name": "commit_code",
+        "description": "코드 변경을 코드베이스에 커밋으로 기록합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "file":        {"type": "string", "description": "변경된 파일 경로 (예: auth/mfa.py)"},
+                "version":     {"type": "string", "description": "새 버전 (예: 1.3.0)"},
+                "note":        {"type": "string", "description": "변경 내용 설명"},
+            },
+            "required": ["scenario_id", "file", "version"],
+        },
+    },
+    {
+        "name": "deploy",
+        "description": "가상 배포를 실행하고 deployments에 결과를 기록합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "version":     {"type": "string", "description": "배포할 버전 (예: 1.3.0)"},
+                "note":        {"type": "string", "description": "배포 노트"},
+            },
+            "required": ["scenario_id", "version"],
+        },
+    },
+    {
+        "name": "read_logs",
+        "description": "가상 시스템의 운영 로그를 조회합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "level":       {"type": "string", "description": "필터: INFO | WARN | ERROR | CRITICAL"},
+                "limit":       {"type": "integer", "description": "최대 조회 건수 (기본 20)"},
+            },
+            "required": ["scenario_id"],
+        },
+    },
+    {
+        "name": "create_incident",
+        "description": "시스템 인시던트를 기록하고 긴급 티켓을 자동 생성합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario_id": {"type": "string", "description": "시뮬레이션 시나리오 ID"},
+                "message":     {"type": "string", "description": "인시던트 내용"},
+                "level":       {"type": "string", "description": "심각도: WARN | ERROR | CRITICAL"},
+            },
+            "required": ["scenario_id", "message"],
+        },
+    },
+]
+
 # 에이전트 tags 기반으로 사용 가능한 툴 필터링
+_SIM_ROLES = {"planner", "developer", "operator", "qa"}
+_SIM_TAGS  = {"시뮬레이션", "simulation", "sim", "기획", "개발", "운영", "qa"}
+
 _TAG_TOOL_MAP = {
     "검색": ["web_search", "fetch_webpage"],
     "수집": ["web_search", "fetch_webpage"],
@@ -166,15 +297,27 @@ _TAG_TOOL_MAP = {
 }
 
 def get_tools_for_agent(tags: list[str], role: str = "") -> list[dict]:
-    """에이전트 tags/role 기반으로 사용할 툴 스키마 반환. 기본으로 datetime은 항상 포함."""
+    """에이전트 tags/role 기반으로 사용할 툴 스키마 반환.
+
+    시뮬레이션 태그(시뮬레이션/sim/기획/개발/운영)나
+    역할(planner/developer/operator)이 포함되면 시뮬레이션 도구 세트를 반환.
+    그 외엔 기존 내장 도구 세트를 반환.
+    """
+    tag_set = {t.lower() for t in (tags or [])}
+
+    # 시뮬레이션 에이전트 판별
+    is_sim = bool(tag_set & _SIM_TAGS) or role.lower() in _SIM_ROLES
+    if is_sim:
+        return list(SIM_TOOL_SCHEMAS)
+
+    # 기존 내장 도구 로직
     enabled = {"get_current_datetime"}
-    for tag in (tags or []):
-        for tool in _TAG_TOOL_MAP.get(tag.lower(), []):
+    for tag in tag_set:
+        for tool in _TAG_TOOL_MAP.get(tag, []):
             enabled.add(tool)
     if role.lower() in _TAG_TOOL_MAP:
         for tool in _TAG_TOOL_MAP[role.lower()]:
             enabled.add(tool)
-    # 툴 미지정이면 전체 툴 허용
     if len(enabled) == 1:
         enabled = {s["name"] for s in TOOL_SCHEMAS}
     return [s for s in TOOL_SCHEMAS if s["name"] in enabled]
@@ -182,6 +325,40 @@ def get_tools_for_agent(tags: list[str], role: str = "") -> list[dict]:
 
 async def execute_tool(name: str, inputs: dict[str, Any]) -> str:
     """툴 이름과 입력값으로 실제 실행."""
+    # ── 시뮬레이션 도구 ───────────────────────────────────────────────
+    if name in _SIM_TOOL_NAMES:
+        from app.agents import sim_tools as _sim
+        if name == "read_requirements":
+            return await _sim.read_requirements(
+                inputs["scenario_id"], inputs.get("status"))
+        if name == "read_tickets":
+            return await _sim.read_tickets(
+                inputs["scenario_id"], inputs.get("status"), inputs.get("assignee_role"))
+        if name == "create_ticket":
+            return await _sim.create_ticket(
+                inputs["scenario_id"], inputs["title"], inputs["assignee_role"],
+                inputs.get("description", ""), inputs.get("priority", "medium"))
+        if name == "update_ticket_status":
+            return await _sim.update_ticket_status(
+                inputs["scenario_id"], inputs["ticket_id"], inputs["status"])
+        if name == "write_design_doc":
+            return await _sim.write_design_doc(
+                inputs["scenario_id"], inputs["title"], inputs["content"])
+        if name == "commit_code":
+            return await _sim.commit_code(
+                inputs["scenario_id"], inputs["file"], inputs["version"],
+                inputs.get("note", ""))
+        if name == "deploy":
+            return await _sim.deploy(
+                inputs["scenario_id"], inputs["version"], inputs.get("note", ""))
+        if name == "read_logs":
+            return await _sim.read_logs(
+                inputs["scenario_id"], inputs.get("level"), inputs.get("limit", 20))
+        if name == "create_incident":
+            return await _sim.create_incident(
+                inputs["scenario_id"], inputs["message"], inputs.get("level", "ERROR"))
+
+    # ── 기존 내장 도구 ────────────────────────────────────────────────
     if name == "web_search":
         return await _web_search(inputs.get("query", ""))
     if name == "calculate":
