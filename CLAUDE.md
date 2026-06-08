@@ -359,5 +359,92 @@ npm run dev                   # http://localhost:3000
 | `/a2a` | A2A 체인 트리 시각화 + 위임 스코프 표시 |
 | `/roi` | ROI KPI 카드 + Claude 인사이트 + 월별 추이 바 차트 |
 
-### 다음에 할 일
-- [ ] 모바일 알림 / FCM 연동
+---
+
+## 멀티에이전트 팀 구성 기능 (2026-06-06 완료)
+
+### 구현 내용
+- **워크플로 실행 방식 선택** (순차 / 계층) — `execution_mode` 필드를 `WorkflowCreate/Update/Response` + `WorkflowRepository.create()`에 추가해 DB에 실제 저장
+- **에이전트 간 데이터 매핑 UI** — 엣지 클릭 시 `A.output → B.input` 매핑 설정 모달 (`EdgeMappingModal`), 매핑된 엣지는 보라색으로 시각화
+- **팀으로 저장** — `POST /api/v1/workflows/{id}/save-as-agent` 로 워크플로를 단일 팀 에이전트로 저장, 에이전트 목록에서 재사용 가능
+- **버그 수정** — `rfToApi()`가 엣지 `data.mapping`을 유실하던 문제 수정, `WorkflowEdge` 타입에 `data?: { mapping?: EdgeMapping[] }` 추가
+
+### 기본 Admin 계정 자동 시드 (2026-06-07 완료)
+- 서버 시작 시 `tjdudwns@gmail.com` / `1111` admin 계정이 없으면 자동 생성
+- 이미 존재하는 경우 비밀번호·role을 초기값으로 강제 갱신 (upsert)
+- 로그인 페이지 이메일·비밀번호 기본값 pre-fill
+
+---
+
+## 가상 조직 시뮬레이션 환경 (진행 중 — 2026-06-08)
+
+워크플로우 추천 기능 개발을 위한 선행 작업. 하나의 요구사항이 기획→개발→운영으로 흐르는 시나리오를 실제 외부 시스템 없이 시뮬레이션한다.
+
+### 완료된 단계
+
+#### 1단계 — 구조 분석 및 설계 (완료)
+- `get_tools_for_agent()` / `execute_tool()` 구조 확인: 태그 기반 도구 필터링, 외부 호출 없는 Mock 전환 용이
+- 에이전트 `role`/`goal`/`tags` 필드로 조직 역할(기획자·개발자·운영자) 1:1 매핑 가능 확인
+- 설계 결정: 시뮬레이션 전용 도구를 `tools.py`에 추가하고, `execute_tool()`에서 디스패치
+
+#### 2단계 — World State 모듈 (완료)
+World State = 가상 조직의 전체 상태를 JSON으로 관리하는 DB 테이블
+
+**신규 파일**
+| 파일 | 역할 |
+|------|------|
+| `backend/app/db/models/world_state_orm.py` | `world_states` 테이블 ORM (scenario_id, name, state JSON) |
+| `backend/alembic/versions/0021_world_state.py` | DB 마이그레이션 |
+| `backend/app/services/world_state_service.py` | CRUD + 인메모리 캐시 + MFA 시드 데이터 |
+| `backend/app/api/v1/simulation.py` | REST API (`/api/v1/simulation/`) |
+
+**World State JSON 구조**
+```json
+{
+  "tickets":      [{ "id", "title", "status", "priority", "assignee_role", "description" }],
+  "codebase":     [{ "file", "version", "last_change", "note" }],
+  "deployments":  [{ "id", "status", "deployed_at", "version", "note" }],
+  "logs":         [{ "timestamp", "level", "message" }],
+  "requirements": [{ "id", "from_customer", "content", "status", "priority" }]
+}
+```
+
+**초기 시드 시나리오**: "로그인 2차 인증(MFA) 추가" — 서버 시작 시 자동 생성
+
+**시뮬레이션 API 엔드포인트**
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/v1/simulation/scenarios` | 시나리오 목록 |
+| POST | `/api/v1/simulation/scenarios` | 시나리오 생성 |
+| GET | `/api/v1/simulation/scenarios/{id}` | World State 전체 조회 |
+| POST | `/api/v1/simulation/scenarios/{id}/reset` | 초기 상태로 리셋 |
+| GET/PUT | `/api/v1/simulation/scenarios/{id}/{section}` | 섹션별 조회·교체 |
+| POST | `/api/v1/simulation/scenarios/{id}/logs` | 로그 추가 |
+| PATCH | `/api/v1/simulation/scenarios/{id}/tickets/{tid}` | 티켓 상태 변경 |
+
+#### 3단계 — 시뮬레이션 도구 (완료)
+`execute_tool()`에 통합된 9개 시뮬레이션 도구. 실제 외부 시스템 대신 World State DB를 조작하며, 모든 쓰기 작업은 `audit_logs`에도 기록된다.
+
+**신규 파일**: `backend/app/agents/sim_tools.py`
+
+| 도구 | 동작 | 감사 로그 액션 |
+|------|------|--------------|
+| `read_requirements(scenario_id, status?)` | requirements 섹션 조회 | `sim.read_requirements` |
+| `read_tickets(scenario_id, status?, assignee_role?)` | tickets 조회 + 필터 | `sim.read_tickets` |
+| `create_ticket(scenario_id, title, assignee_role, ...)` | 티켓 생성 + logs 기록 | `sim.create_ticket` |
+| `update_ticket_status(scenario_id, ticket_id, status)` | 티켓 상태 변경 | `sim.update_ticket_status` |
+| `write_design_doc(scenario_id, title, content)` | codebase에 문서 저장 | `sim.write_design_doc` |
+| `commit_code(scenario_id, file, version, note?)` | codebase 커밋 기록 | `sim.commit_code` |
+| `deploy(scenario_id, version, note?)` | 가상 배포, 이전 live → superseded | `sim.deploy` |
+| `read_logs(scenario_id, level?, limit?)` | logs 조회 | `sim.read_logs` |
+| `create_incident(scenario_id, message, level?)` | logs + 긴급 티켓 자동 생성 | `sim.create_incident` |
+
+**에이전트에 시뮬레이션 도구 연결 방법**
+- `tags`에 `시뮬레이션`, `sim`, `기획`, `개발`, `운영`, `qa` 중 하나 포함
+- 또는 `role`을 `planner`, `developer`, `operator`, `qa` 중 하나로 설정
+- 시스템 프롬프트에 `scenario_id` 주입 → Claude가 도구 호출 시 자동 포함
+
+### 남은 단계 (예정)
+- [ ] **4단계** — 기획·개발·운영 에이전트 정의 + 워크플로 구성 (시뮬레이션 도구 사용)
+- [ ] **5단계** — 시나리오 실행 및 World State 변화 추적
+- [ ] **6단계** — 실행 결과를 바탕으로 워크플로 추천 기능 구현
