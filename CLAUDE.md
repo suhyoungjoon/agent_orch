@@ -444,7 +444,36 @@ World State = 가상 조직의 전체 상태를 JSON으로 관리하는 DB 테�
 - 또는 `role`을 `planner`, `developer`, `operator`, `qa` 중 하나로 설정
 - 시스템 프롬프트에 `scenario_id` 주입 → Claude가 도구 호출 시 자동 포함
 
-### 남은 단계 (예정)
-- [ ] **4단계** — 기획·개발·운영 에이전트 정의 + 워크플로 구성 (시뮬레이션 도구 사용)
-- [ ] **5단계** — 시나리오 실행 및 World State 변화 추적
-- [ ] **6단계** — 실행 결과를 바탕으로 워크플로 추천 기능 구현
+#### 4단계 — 시뮬레이션 에이전트 및 워크플로 시드 (완료 — 2026-06-08)
+기획→개발→운영 역할 에이전트 3개 + 순차 실행 워크플로를 서버 시작 시 자동 생성
+
+**신규 파일**
+| 파일 | 역할 |
+|------|------|
+| `backend/app/services/sim_seed_service.py` | 시뮬레이션 에이전트(planner/developer/operator) + 워크플로 자동 시드 |
+| `backend/scripts/seed_simulation.py` | 수동 시드 실행 스크립트 |
+
+- `planner` 에이전트: tags `["시뮬레이션", "기획"]`, 요구사항 분석·티켓 생성 담당
+- `developer` 에이전트: tags `["시뮬레이션", "개발"]`, 설계 문서·코드 커밋 담당
+- `operator` 에이전트: tags `["시뮬레이션", "운영"]`, 배포·인시던트 관리 담당
+- 세 에이전트를 순차(sequential) 연결한 "MFA 도입 워크플로" 자동 생성
+- 프론트엔드: `planner/developer/operator` role 타입 및 배지 색상 추가 (`AgentCard.tsx`, `AgentFormModal.tsx`, `api.ts`)
+
+#### 기타 개선 사항 (완료 — 2026-06-08)
+
+**웹 검색 도구 교체** (DuckDuckGo → Brave Search → Anthropic 내장 web_search)
+- `tools.py`: `web_search` 스키마를 Anthropic 내장 도구 형식(`"type": "web_search_20260209"`)으로 교체
+- DuckDuckGo/Brave Search HTTP 호출 코드 제거 — API 키 불필요, Claude가 직접 검색 수행
+
+**에이전트 생성 폼 개선** (`AgentFormModal.tsx`)
+- LLM 제공자 기본값을 Anthropic(Claude)으로 설정
+- 역할에 따른 스마트 모델 추천 기능 추가
+
+### 시뮬레이션 전체 완료 현황
+
+| 단계 | 내용 | 상태 |
+|------|------|------|
+| 1단계 | 구조 분석 및 설계 방안 도출 | ✅ 완료 |
+| 2단계 | World State 모듈 (DB + API) | ✅ 완료 |
+| 3단계 | 시뮬레이션 도구 9개 구현 + execute_tool() 통합 | ✅ 완료 |
+| 4단계 | 시뮬레이션 에이전트 3개 + 워크플로 시드 | ✅ 완료 |
