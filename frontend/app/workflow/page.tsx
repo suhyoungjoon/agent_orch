@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import WorkflowBuilder from "@/components/WorkflowBuilder";
 import { api, Workflow } from "@/lib/api";
-import { Plus, GitMerge, Loader2, Trash2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
+import { Plus, GitMerge, Trash2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
 
 function WorkflowCard({
   wf,
@@ -97,7 +97,7 @@ function DeleteModal({
           <div>
             <p className="font-semibold text-gray-900 text-sm">워크플로 삭제</p>
             <p className="text-xs text-gray-500 mt-1">
-              <span className="font-medium text-gray-700">"{name}"</span>을 삭제합니다.
+              <span className="font-medium text-gray-700">&ldquo;{name}&rdquo;</span>을 삭제합니다.
               이 작업은 되돌릴 수 없습니다.
             </p>
           </div>

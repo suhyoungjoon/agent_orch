@@ -11,7 +11,7 @@ import {
 } from "@/lib/api";
 import {
   Bot, Users, Play, Zap,
-  DollarSign, RefreshCw, Loader2, Clock, TrendingUp, AlertCircle,
+  DollarSign, RefreshCw, Clock, TrendingUp, AlertCircle,
 } from "lucide-react";
 
 // ── 숫자 포매터 ─────────────────────────────────────────────────────
