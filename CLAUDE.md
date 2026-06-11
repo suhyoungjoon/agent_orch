@@ -142,6 +142,55 @@ npm run dev                   # http://localhost:3000
 
 ---
 
+## 테스트
+
+### 환경 설정 (최초 1회)
+
+Python 3.13이 필요합니다. [python.org](https://www.python.org/downloads/) 또는 pyenv를 통해 설치 후:
+
+```bash
+cd backend
+
+# 가상환경 생성 및 활성화
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
+# 앱 의존성 + 테스트 전용 패키지 설치
+pip install -r requirements.txt
+pip install -r requirements-test.txt
+```
+
+### 테스트 실행
+
+```bash
+cd backend
+
+# 전체 테스트
+pytest
+
+# 커버리지 리포트 포함 실행
+pytest --cov=app --cov-report=term-missing
+
+# 특정 파일만
+pytest tests/test_workflow_executor.py -v
+pytest tests/test_sim_tools.py -v
+pytest tests/test_workflow_api.py -v
+```
+
+### 테스트 구성
+
+| 파일 | 대상 | 테스트 수 |
+|------|------|-----------|
+| `tests/test_workflow_executor.py` | `_topological_sort`, `_build_context_from_edges` 순수 함수 | 16개 |
+| `tests/test_sim_tools.py` | World State 서비스 + sim_tools 통합 | 21개 |
+| `tests/test_workflow_api.py` | 워크플로 CRUD API (정상/권한/404) | 23개 |
+
+- **DB**: 인메모리 SQLite(`aiosqlite:///:memory:`) — 테스트 격리 보장
+- **인증**: JWT 토큰 직접 생성, 외부 서비스 불필요
+- **커버리지 설정**: `pytest.ini`의 `[coverage:run]` 참고 (`app/` 전체, 마이그레이션 제외)
+
+---
+
 ## API 설계 원칙
 
 - 모든 경로는 `/api/v1/` 접두사 사용
