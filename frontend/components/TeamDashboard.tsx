@@ -11,7 +11,7 @@ import {
 } from "@/lib/api";
 import {
   Bot, Users, Play, Zap,
-  DollarSign, RefreshCw, Loader2, Clock, TrendingUp,
+  DollarSign, RefreshCw, Loader2, Clock, TrendingUp, AlertCircle,
 } from "lucide-react";
 
 // ── 숫자 포매터 ─────────────────────────────────────────────────────
@@ -116,23 +116,81 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
+// ── 스켈레톤 ─────────────────────────────────────────────────────────
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <div className="h-7 w-44 rounded-lg bg-gray-200" />
+          <div className="h-4 w-28 rounded bg-gray-100" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-20 rounded-2xl border border-gray-100 bg-gray-50" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="h-52 rounded-2xl border border-gray-100 bg-gray-50" />
+        <div className="h-52 rounded-2xl border border-gray-100 bg-gray-50" />
+      </div>
+      <div className="h-64 rounded-2xl border border-gray-100 bg-gray-50" />
+    </div>
+  );
+}
+
+// ── 에러 배너 ─────────────────────────────────────────────────────────
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-6 flex items-start gap-3">
+      <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+      <div>
+        <p className="text-sm font-medium text-red-700">{message}</p>
+        <button
+          onClick={onRetry}
+          className="mt-1.5 text-xs text-red-600 hover:text-red-700 underline underline-offset-2"
+        >
+          다시 시도
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── 팀 없음 안내 ─────────────────────────────────────────────────────
+function NoTeamState() {
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-gray-200 py-20 text-center">
+      <Users size={40} className="mx-auto mb-3 text-gray-200" />
+      <p className="text-sm font-semibold text-gray-500">팀 데이터가 없습니다</p>
+      <p className="text-xs text-gray-400 mt-1">팀에 가입하거나 관리자에게 초대를 요청하세요</p>
+    </div>
+  );
+}
+
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────
 export default function TeamDashboard() {
   const { data: session } = useSession();
   const [data, setData] = useState<TeamDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetch = useCallback(async () => {
     const teamId = session?.user?.teamId;
     const token  = session?.user?.accessToken;
-    if (!teamId || !token) return;
+    if (!teamId || !token) {
+      setLoading(false);
+      return;
+    }
+    setError(null);
     try {
       const d = await api.getDashboard(teamId, token);
       setData(d);
       setLastUpdated(new Date());
     } catch {
-      // 팀 없음 등은 무시
+      setError("대시보드 데이터를 불러오지 못했습니다. 네트워크 상태를 확인해주세요.");
     } finally {
       setLoading(false);
     }
@@ -144,16 +202,9 @@ export default function TeamDashboard() {
     return () => clearInterval(id);
   }, [fetch]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16 text-gray-400">
-        <Loader2 size={20} className="animate-spin mr-2" />
-        <span className="text-sm">대시보드 로딩 중...</span>
-      </div>
-    );
-  }
-
-  if (!data) return null;
+  if (loading) return <DashboardSkeleton />;
+  if (error)   return <ErrorBanner message={error} onRetry={fetch} />;
+  if (!data)   return <NoTeamState />;
 
   const { summary, member_stats, agent_stats, recent_runs } = data;
 

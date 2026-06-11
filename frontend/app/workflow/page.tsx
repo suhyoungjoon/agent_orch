@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import WorkflowBuilder from "@/components/WorkflowBuilder";
 import { api, Workflow } from "@/lib/api";
-import { Plus, GitMerge, Loader2, Trash2, Clock } from "lucide-react";
+import { Plus, GitMerge, Loader2, Trash2, Clock, AlertCircle, AlertTriangle } from "lucide-react";
 
 function WorkflowCard({
   wf,
@@ -57,18 +57,86 @@ function WorkflowCard({
   );
 }
 
+// ── 스켈레톤 카드 ─────────────────────────────────────────────────────
+function WorkflowCardSkeleton() {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 animate-pulse space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 rounded bg-gray-200" />
+        <div className="h-4 w-32 rounded bg-gray-200" />
+      </div>
+      <div className="h-3 w-full rounded bg-gray-100" />
+      <div className="flex gap-3">
+        <div className="h-3 w-16 rounded bg-gray-100" />
+        <div className="h-3 w-16 rounded bg-gray-100" />
+      </div>
+    </div>
+  );
+}
+
+// ── 삭제 확인 모달 ────────────────────────────────────────────────────
+function DeleteModal({
+  name,
+  onConfirm,
+  onCancel,
+}: {
+  name: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-red-100 p-2 shrink-0">
+            <AlertTriangle size={16} className="text-red-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">워크플로 삭제</p>
+            <p className="text-xs text-gray-500 mt-1">
+              <span className="font-medium text-gray-700">"{name}"</span>을 삭제합니다.
+              이 작업은 되돌릴 수 없습니다.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            삭제
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorkflowPage() {
   const { data: session } = useSession();
   const token = session?.user?.accessToken;
 
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null | "new">(null);
+  const [deleteTarget, setDeleteTarget] = useState<Workflow | null>(null);
 
   async function loadWorkflows() {
+    setError(null);
     try {
       setWorkflows(await api.getWorkflows(token));
     } catch {
+      setError("워크플로 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
       setWorkflows([]);
     } finally {
       setLoading(false);
@@ -78,9 +146,14 @@ export default function WorkflowPage() {
   useEffect(() => { if (token !== undefined) loadWorkflows(); }, [token]);
 
   async function handleDelete(id: string) {
-    if (!confirm("워크플로를 삭제하시겠습니까?")) return;
-    await api.deleteWorkflow(id, token);
-    setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    try {
+      await api.deleteWorkflow(id, token);
+      setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    } catch {
+      setError("삭제 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setDeleteTarget(null);
+    }
   }
 
   // 빌더 열려 있을 때
@@ -117,10 +190,19 @@ export default function WorkflowPage() {
           </button>
         </div>
 
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-2.5">
+            <AlertCircle size={15} className="text-red-500 shrink-0" />
+            <p className="text-sm text-red-700 flex-1">{error}</p>
+            <button onClick={loadWorkflows} className="text-xs text-red-600 hover:text-red-700 underline shrink-0">
+              다시 시도
+            </button>
+          </div>
+        )}
+
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
-            <Loader2 size={20} className="animate-spin mr-2" />
-            <span className="text-sm">불러오는 중...</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => <WorkflowCardSkeleton key={i} />)}
           </div>
         ) : workflows.length === 0 ? (
           <div
@@ -138,7 +220,7 @@ export default function WorkflowPage() {
                 key={wf.id}
                 wf={wf}
                 onOpen={() => setOpenId(wf.id)}
-                onDelete={() => handleDelete(wf.id)}
+                onDelete={() => setDeleteTarget(wf)}
               />
             ))}
             <button
@@ -150,6 +232,14 @@ export default function WorkflowPage() {
           </div>
         )}
       </main>
+
+      {deleteTarget && (
+        <DeleteModal
+          name={deleteTarget.name}
+          onConfirm={() => handleDelete(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

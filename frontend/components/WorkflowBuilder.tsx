@@ -14,7 +14,7 @@ import WorkflowAgentNode, { AgentNodeData } from "./WorkflowAgentNode";
 import {
   Save, ArrowLeft, AlertTriangle, CheckCircle,
   XCircle, Loader2, GripVertical, Play, ChevronDown, ChevronUp,
-  Plus, Trash2, ArrowRight,
+  Plus, Trash2, ArrowRight, GitMerge, CircleCheck, CircleX,
 } from "lucide-react";
 
 // ── 충돌 감지 ─────────────────────────────────────────────────────────────────
@@ -210,77 +210,85 @@ function ConflictPanel({ conflicts }: { conflicts: Conflict[] }) {
 
 // ── 실행 결과 패널 ────────────────────────────────────────────────────────────
 
-function RunResultPanel({
-  run,
-  nodes,
-}: {
-  run: WorkflowRun;
-  nodes: Node[];
-}) {
+function RunResultPanel({ run, nodes }: { run: WorkflowRun; nodes: Node[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const statusColor = {
-    pending:   "bg-gray-100 text-gray-600",
-    running:   "bg-blue-100 text-blue-700",
-    completed: "bg-green-100 text-green-700",
-    failed:    "bg-red-100 text-red-700",
+  const completedCount = Object.values(run.node_results).filter((r) => r.status === "completed").length;
+  const failedCount    = Object.values(run.node_results).filter((r) => r.status === "failed").length;
+
+  const statusMeta: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+    pending:   { label: "대기 중", cls: "bg-gray-100 text-gray-600",   icon: null },
+    running:   { label: "실행 중", cls: "bg-blue-100 text-blue-700",   icon: <Loader2 size={10} className="animate-spin" /> },
+    completed: { label: "완료",    cls: "bg-green-100 text-green-700", icon: <CircleCheck size={10} /> },
+    failed:    { label: "실패",    cls: "bg-red-100 text-red-700",     icon: <CircleX size={10} /> },
   };
+  const sm = statusMeta[run.status] ?? statusMeta.pending;
 
   return (
-    <div className="border-t border-gray-200 bg-white max-h-56 overflow-y-auto">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 sticky top-0 bg-white">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[run.status]}`}>
-          {run.status === "pending" ? "대기중"
-           : run.status === "running" ? "실행중"
-           : run.status === "completed" ? "완료"
-           : "실패"}
+    <div className="border-t border-gray-200 bg-white max-h-64 overflow-y-auto">
+      {/* 헤더 */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-sm">
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${sm.cls}`}>
+          {sm.icon}{sm.label}
         </span>
-        <span className="text-xs text-gray-500 flex-1 truncate">작업: {run.task}</span>
-        {run.error && (
-          <span className="text-xs text-red-500 truncate max-w-xs">{run.error}</span>
+        <span className="text-xs text-gray-500 flex-1 truncate">{run.task}</span>
+        {run.status !== "pending" && run.status !== "running" && (
+          <span className="text-xs text-gray-400 shrink-0">
+            {completedCount}/{nodes.length} 완료
+            {failedCount > 0 && <span className="text-red-500 ml-1">· {failedCount} 실패</span>}
+          </span>
         )}
       </div>
 
-      <div className="divide-y divide-gray-50">
-        {nodes.map((node) => {
-          const nodeResult: NodeRunResult | undefined = run.node_results[node.id];
-          const label = (node.data as AgentNodeData).label;
-          const isExpanded = expanded === node.id;
+      {/* 전체 오류 메시지 */}
+      {run.error && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+          <XCircle size={13} className="text-red-500 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-red-700">{run.error}</p>
+        </div>
+      )}
 
-          if (!nodeResult) return (
-            <div key={node.id} className="flex items-center gap-2 px-4 py-2 text-xs text-gray-400">
-              <span className="w-2 h-2 rounded-full bg-gray-200 shrink-0" />
-              {label}
-            </div>
-          );
+      {/* 노드별 결과 */}
+      <div className="divide-y divide-gray-50 pb-1">
+        {nodes.map((node, idx) => {
+          const nr: NodeRunResult | undefined = run.node_results[node.id];
+          const label = (node.data as AgentNodeData).label;
+          const isOpen = expanded === node.id;
+          const hasContent = !!(nr?.result || nr?.error);
+
+          const dotCls = !nr
+            ? "bg-gray-200"
+            : nr.status === "running"   ? "bg-blue-400 animate-pulse"
+            : nr.status === "completed" ? "bg-green-400"
+            : nr.status === "failed"    ? "bg-red-400"
+            : "bg-gray-300";
 
           return (
             <div key={node.id} className="px-4 py-2">
               <button
-                onClick={() => setExpanded(isExpanded ? null : node.id)}
-                className="w-full flex items-center gap-2 text-left"
+                onClick={() => hasContent && setExpanded(isOpen ? null : node.id)}
+                className={`w-full flex items-center gap-2.5 text-left ${hasContent ? "cursor-pointer" : "cursor-default"}`}
               >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                  nodeResult.status === "running"   ? "bg-blue-400 animate-pulse"
-                  : nodeResult.status === "completed" ? "bg-green-400"
-                  : nodeResult.status === "failed"    ? "bg-red-400"
-                  : "bg-gray-300"
-                }`} />
+                <span className="text-[10px] text-gray-300 w-4 shrink-0 text-right">{idx + 1}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
                 <span className="text-xs font-medium text-gray-700 flex-1 truncate">{label}</span>
-                {nodeResult.status === "running" && <Loader2 size={11} className="animate-spin text-blue-500" />}
-                {nodeResult.result && (
-                  isExpanded ? <ChevronUp size={12} className="text-gray-400" /> : <ChevronDown size={12} className="text-gray-400" />
+                {nr?.status === "running"   && <Loader2 size={11} className="animate-spin text-blue-500 shrink-0" />}
+                {nr?.status === "failed"    && <span className="text-[10px] text-red-500 shrink-0">오류</span>}
+                {hasContent && (isOpen
+                  ? <ChevronUp size={12} className="text-gray-400 shrink-0" />
+                  : <ChevronDown size={12} className="text-gray-400 shrink-0 opacity-0 group-hover:opacity-100" />
                 )}
               </button>
 
-              {isExpanded && nodeResult.result && (
-                <div className="mt-2 text-[11px] text-gray-600 bg-gray-50 rounded-lg p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                  {nodeResult.result}
+              {isOpen && nr?.result && (
+                <div className="mt-2 ml-7 text-[11px] text-gray-600 bg-gray-50 rounded-lg p-2.5 max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed border border-gray-100">
+                  {nr.result}
                 </div>
               )}
-              {isExpanded && nodeResult.error && (
-                <div className="mt-2 text-[11px] text-red-600 bg-red-50 rounded-lg p-2">
-                  {nodeResult.error}
+              {isOpen && nr?.error && (
+                <div className="mt-2 ml-7 flex items-start gap-1.5 text-[11px] text-red-700 bg-red-50 rounded-lg p-2.5 border border-red-100">
+                  <XCircle size={12} className="shrink-0 mt-0.5" />
+                  <span>{nr.error}</span>
                 </div>
               )}
             </div>
@@ -348,6 +356,36 @@ function RunModal({
 // ── 메인 빌더 ─────────────────────────────────────────────────────────────────
 
 const NODE_TYPES = { agentNode: WorkflowAgentNode };
+
+// ── API 에러 파싱 ─────────────────────────────────────────────────────
+function parseApiError(err: unknown): string {
+  if (!(err instanceof Error)) return "알 수 없는 오류가 발생했습니다.";
+  try {
+    const parsed = JSON.parse(err.message);
+    if (parsed.detail) return String(parsed.detail);
+  } catch { /* JSON 아니면 그대로 사용 */ }
+  const msg = err.message;
+  if (msg.includes("401")) return "인증이 만료됐습니다. 다시 로그인해주세요.";
+  if (msg.includes("403")) return "이 작업을 수행할 권한이 없습니다.";
+  if (msg.includes("404")) return "대상을 찾을 수 없습니다.";
+  if (msg.includes("500")) return "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+  if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
+    return "서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.";
+  return msg;
+}
+
+// ── 빈 캔버스 안내 ────────────────────────────────────────────────────
+function EmptyCanvasHint() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+      <div className="text-center select-none">
+        <GitMerge size={48} className="mx-auto mb-3 text-gray-200" />
+        <p className="text-sm font-medium text-gray-400">왼쪽 패널에서 에이전트를 드래그해 추가하세요</p>
+        <p className="text-xs text-gray-300 mt-1">에이전트를 연결해 실행 순서를 정의합니다</p>
+      </div>
+    </div>
+  );
+}
 
 function rfToApi(nodes: Node[], edges: Edge[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   return {
@@ -670,7 +708,7 @@ export default function WorkflowBuilder({
       setSaveMsg("저장됨");
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : "저장 실패");
+      setSaveMsg(parseApiError(err));
     } finally {
       setSaving(false);
     }
@@ -700,7 +738,7 @@ export default function WorkflowBuilder({
       const run = await api.runWorkflow(wfId, task, token);
       setActiveRun(run);
     } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : "실행 시작 실패");
+      setSaveMsg(parseApiError(err));
       setRunning(false);
     }
   }
@@ -878,7 +916,8 @@ export default function WorkflowBuilder({
 
         {/* React Flow 캔버스 + 실행 결과 패널 */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="flex-1 min-h-0" onDragOver={onDragOver} onDrop={onDrop}>
+          <div className="flex-1 min-h-0 relative" onDragOver={onDragOver} onDrop={onDrop}>
+            {nodes.length === 0 && <EmptyCanvasHint />}
             <ReactFlow
               nodes={displayNodes as Node[]}
               edges={edges.map((e) => {
