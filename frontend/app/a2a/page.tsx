@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import { api, A2AChain } from "@/lib/api";
+import { ErrorBanner, TableSkeleton } from "@/components/ui-shared";
+import { Link2 } from "lucide-react";
 
 const DEPTH_COLORS = ["bg-blue-100", "bg-purple-100", "bg-green-100", "bg-yellow-100", "bg-red-100"];
 
@@ -19,15 +21,17 @@ export default function A2APage() {
 
   const [chains, setChains] = useState<A2AChain[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.getA2AChains({}, token);
       setChains(data);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setError("A2A 체인 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -88,13 +92,15 @@ export default function A2APage() {
           </div>
         </div>
 
-        {loading ? (
-          <p className="text-center text-gray-400 py-10">로딩 중…</p>
+        {error ? (
+          <ErrorBanner message={error} onRetry={load} />
+        ) : loading ? (
+          <TableSkeleton rows={5} />
         ) : Object.keys(grouped).length === 0 ? (
-          <div className="bg-white rounded-xl p-10 text-center text-gray-400">
-            <p className="text-4xl mb-2">🔗</p>
-            <p>A2A 호출 기록이 없습니다.</p>
-            <p className="text-sm mt-1">POST /api/v1/a2a/chains 로 에이전트 간 통신을 등록하세요.</p>
+          <div className="rounded-2xl border-2 border-dashed border-gray-200 py-16 text-center">
+            <Link2 size={36} className="mx-auto mb-3 text-gray-200" />
+            <p className="text-sm font-semibold text-gray-500">A2A 호출 기록이 없습니다</p>
+            <p className="text-xs text-gray-400 mt-1">에이전트가 다른 에이전트를 호출하면 여기에 체인이 기록됩니다</p>
           </div>
         ) : (
           <div className="space-y-4">

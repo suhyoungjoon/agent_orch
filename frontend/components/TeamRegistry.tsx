@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Agent, api } from "@/lib/api";
-import { Search, X, Globe, GitFork, Loader2, Zap } from "lucide-react";
+import { Search, X, Globe, GitFork, Loader2, Zap, AlertCircle } from "lucide-react";
+import { AgentCardSkeleton } from "@/components/ui-shared";
 import AgentCard from "./AgentCard";
 import CreateAgentButton from "./CreateAgentButton";
 import SynergyPanel from "./SynergyPanel";
@@ -27,6 +28,7 @@ export default function TeamRegistry() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [synergyAgent, setSynergyAgent] = useState<Agent | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -41,6 +43,7 @@ export default function TeamRegistry() {
 
   async function fetchAgents() {
     setLoading(true);
+    setFetchError(null);
     try {
       const params = {
         search: search || undefined,
@@ -59,6 +62,7 @@ export default function TeamRegistry() {
       }
     } catch {
       setAgents([]);
+      setFetchError("에이전트 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -143,12 +147,20 @@ export default function TeamRegistry() {
         </div>
       )}
 
+      {/* 에러 배너 */}
+      {fetchError && (
+        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-2.5">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 flex-1">{fetchError}</p>
+          <button onClick={fetchAgents} className="text-xs text-red-600 hover:text-red-700 underline shrink-0">
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* 에이전트 그리드 */}
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-gray-400">
-          <Loader2 size={20} className="animate-spin mr-2" />
-          <span className="text-sm">불러오는 중...</span>
-        </div>
+        <AgentCardSkeleton count={4} />
       ) : agents.length === 0 ? (
         <EmptyState tab={tab} hasSearch={!!search || activeTags.length > 0} />
       ) : tab === "team" ? (

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import { api, AuditLog, AuditSummary } from "@/lib/api";
+import { ErrorBanner, TableSkeleton } from "@/components/ui-shared";
+import { ShieldCheck } from "lucide-react";
 
 const RISK_COLOR: Record<string, string> = {
   low: "bg-gray-100 text-gray-700",
@@ -26,9 +28,11 @@ export default function GovernancePage() {
   const [euOnly, setEuOnly] = useState(false);
   const [riskFilter, setRiskFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [l, s] = await Promise.all([
         api.getAuditLogs({ eu_only: euOnly, risk_level: riskFilter || undefined, limit: 100 }, token),
@@ -36,8 +40,8 @@ export default function GovernancePage() {
       ]);
       setLogs(l);
       setSummary(s);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setError("감사 로그를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -124,9 +128,15 @@ export default function GovernancePage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">로딩 중…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-4"><TableSkeleton rows={6} /></td></tr>
+              ) : error ? (
+                <tr><td colSpan={7} className="px-4 py-4"><ErrorBanner message={error} onRetry={load} /></td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">감사 로그가 없습니다.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center">
+                  <ShieldCheck size={32} className="mx-auto mb-2 text-gray-200" />
+                  <p className="text-sm text-gray-400">감사 로그가 없습니다</p>
+                  <p className="text-xs text-gray-300 mt-0.5">에이전트 실행·생성 등 주요 동작이 기록됩니다</p>
+                </td></tr>
               ) : (
                 logs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50">

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import { api, AnomalyEvent, SprawlReport } from "@/lib/api";
+import { ErrorBanner, CardGridSkeleton } from "@/components/ui-shared";
+import { ShieldOff } from "lucide-react";
 
 const SEV_COLOR: Record<string, string> = {
   critical: "bg-red-100 text-red-800 border-red-200",
@@ -37,9 +39,11 @@ export default function SecurityPage() {
   const [selected, setSelected] = useState<AnomalyEvent | null>(null);
   const [resolveNote, setResolveNote] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [a, s] = await Promise.all([
         api.getAnomalies({ status: statusFilter || undefined }, token),
@@ -47,8 +51,8 @@ export default function SecurityPage() {
       ]);
       setAnomalies(a);
       setSprawl(s);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setError("보안 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -129,12 +133,15 @@ export default function SecurityPage() {
               <button onClick={load} className="ml-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm">새로고침</button>
             </div>
 
-            {loading ? (
-              <p className="text-center text-gray-400 py-10">로딩 중…</p>
+            {error ? (
+              <ErrorBanner message={error} onRetry={load} />
+            ) : loading ? (
+              <CardGridSkeleton count={4} />
             ) : anomalies.length === 0 ? (
-              <div className="bg-white rounded-xl p-10 text-center text-gray-400">
-                <p className="text-4xl mb-2">✅</p>
-                <p>이상 행동이 감지되지 않았습니다.</p>
+              <div className="rounded-2xl border-2 border-dashed border-gray-200 py-16 text-center">
+                <ShieldOff size={36} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm font-semibold text-gray-500">이상 행동이 감지되지 않았습니다</p>
+                <p className="text-xs text-gray-400 mt-1">에이전트 실행 패턴이 정상 범위 내에 있습니다</p>
               </div>
             ) : (
               <div className="space-y-3">

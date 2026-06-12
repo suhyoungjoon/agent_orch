@@ -2,21 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { Run } from "@/lib/api";
+import { Loader2, Play, AlertCircle } from "lucide-react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function RunHistory() {
   const [runMap, setRunMap] = useState<Map<string, Run>>(new Map());
+  const [connecting, setConnecting] = useState(true);
+  const [connError, setConnError] = useState(false);
 
   useEffect(() => {
     const es = new EventSource(`${BASE_URL}/api/v1/runs/stream`);
 
+    es.onopen = () => { setConnecting(false); setConnError(false); };
+
     es.onmessage = (event) => {
+      setConnecting(false);
       const run: Run = JSON.parse(event.data);
       setRunMap((prev) => new Map(prev).set(run.run_id, run));
     };
 
-    es.onerror = () => es.close();
+    es.onerror = () => {
+      setConnecting(false);
+      setConnError(true);
+      es.close();
+    };
 
     return () => es.close();
   }, []);
@@ -25,11 +35,32 @@ export default function RunHistory() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  if (runs.length === 0) return null;
-
   return (
     <section>
       <h2 className="text-lg font-semibold text-gray-800 mb-3">실행 기록</h2>
+
+      {connError && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 mb-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="text-sm text-red-700">실시간 스트림에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.</p>
+        </div>
+      )}
+
+      {connecting && (
+        <div className="flex items-center gap-2 text-gray-400 py-4">
+          <Loader2 size={14} className="animate-spin" />
+          <span className="text-sm">실행 스트림 연결 중...</span>
+        </div>
+      )}
+
+      {!connecting && !connError && runs.length === 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-gray-200 py-12 text-center">
+          <Play size={28} className="mx-auto mb-2 text-gray-200" />
+          <p className="text-sm text-gray-500 font-medium">실행 기록이 없습니다</p>
+          <p className="text-xs text-gray-400 mt-1">에이전트를 실행하면 여기에 기록됩니다</p>
+        </div>
+      )}
+
       <div className="space-y-2">
         {runs.map((run) => (
           <div

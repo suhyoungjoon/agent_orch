@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import { api, ROISnapshot } from "@/lib/api";
+import { ErrorBanner, MetricSkeleton } from "@/components/ui-shared";
+import { BarChart2 } from "lucide-react";
 
 const PRIORITY_COLOR: Record<string, string> = {
   high:   "bg-red-50 border-red-200 text-red-800",
@@ -19,9 +21,11 @@ export default function ROIPage() {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async (forceRefresh = false) => {
     setLoading(true);
+    setError(null);
     try {
       const [snap, hist] = await Promise.all([
         api.getROI(undefined, period, forceRefresh, token),
@@ -29,8 +33,8 @@ export default function ROIPage() {
       ]);
       setSnapshot(snap);
       setHistory(hist);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setError("ROI 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -72,12 +76,18 @@ export default function ROIPage() {
           </div>
         </div>
 
-        {loading ? (
-          <p className="text-center text-gray-400 py-20">데이터 집계 중…</p>
+        {error ? (
+          <ErrorBanner message={error} onRetry={() => load()} />
+        ) : loading ? (
+          <div className="space-y-6">
+            <MetricSkeleton count={4} />
+            <MetricSkeleton count={4} />
+          </div>
         ) : !snapshot || snapshot.total_runs === 0 ? (
-          <div className="bg-white rounded-xl p-10 text-center text-gray-400">
-            <p className="text-4xl mb-2">📊</p>
-            <p>{period} 기간의 실행 데이터가 없습니다.</p>
+          <div className="rounded-2xl border-2 border-dashed border-gray-200 py-20 text-center">
+            <BarChart2 size={36} className="mx-auto mb-3 text-gray-200" />
+            <p className="text-sm font-semibold text-gray-500">{period} 기간의 실행 데이터가 없습니다</p>
+            <p className="text-xs text-gray-400 mt-1">에이전트를 실행하면 ROI 지표가 자동으로 집계됩니다</p>
           </div>
         ) : (
           <>

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import { api, MCPServer, MCPTool } from "@/lib/api";
+import { ErrorBanner, CardGridSkeleton } from "@/components/ui-shared";
+import { Server } from "lucide-react";
 
 const STATUS_COLOR: Record<string, string> = {
   online:  "bg-green-100 text-green-800 border-green-200",
@@ -24,6 +26,7 @@ export default function MCPPage() {
 
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", endpoint: "", description: "" });
   const [saving, setSaving] = useState(false);
@@ -33,11 +36,12 @@ export default function MCPPage() {
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.getMCPServers(token);
       setServers(data);
     } catch {
-      setServers([]);
+      setError("MCP 서버 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -193,13 +197,15 @@ export default function MCPPage() {
           {/* 서버 목록 */}
           <div className="col-span-2 space-y-3">
             <h2 className="font-semibold text-gray-700 text-sm">등록된 서버</h2>
-            {loading ? (
-              <p className="text-gray-400 text-sm">로딩 중…</p>
+            {error ? (
+              <ErrorBanner message={error} onRetry={load} />
+            ) : loading ? (
+              <CardGridSkeleton count={3} />
             ) : servers.length === 0 ? (
-              <div className="bg-white rounded-xl p-8 text-center text-gray-400 border border-dashed">
-                <p className="text-3xl mb-2">🔌</p>
-                <p className="text-sm">등록된 MCP 서버가 없습니다.</p>
-                <p className="text-xs mt-1">서버를 등록하면 에이전트가 외부 툴을 사용할 수 있습니다.</p>
+              <div className="rounded-2xl border-2 border-dashed border-gray-200 py-12 text-center">
+                <Server size={32} className="mx-auto mb-2 text-gray-200" />
+                <p className="text-sm font-semibold text-gray-500">등록된 MCP 서버가 없습니다</p>
+                <p className="text-xs text-gray-400 mt-1">서버를 등록하면 에이전트가 외부 툴을 사용할 수 있습니다</p>
               </div>
             ) : (
               servers.map(server => (
