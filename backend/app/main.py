@@ -151,9 +151,14 @@ _ALWAYS_ALLOWED = ["https://agent-orch.vercel.app", "http://localhost:3000"]
 _env_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 _allowed_origins = list(set(_ALWAYS_ALLOWED + _env_origins))
 
+# Vercel 프리뷰 배포 URL 패턴 (배포마다 해시가 바뀌므로 regex로 허용)
+# 예: https://agent-orch-abc123-suh-young-joons-projects.vercel.app
+_VERCEL_PREVIEW_REGEX = r"https://agent-orch[a-z0-9\-]*\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=_VERCEL_PREVIEW_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
