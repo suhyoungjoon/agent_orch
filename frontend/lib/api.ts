@@ -297,7 +297,7 @@ export interface ParseIntentResult {
 }
 
 export interface NodeRunResult {
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
   agent_id: string;
   agent_name: string | null;
   result: string | null;

@@ -256,24 +256,27 @@ function RunResultPanel({ run, nodes }: { run: WorkflowRun; nodes: Node[] }) {
           const isOpen = expanded === node.id;
           const hasContent = !!(nr?.result || nr?.error);
 
+          const isSkipped = nr?.status === "skipped";
           const dotCls = !nr
             ? "bg-gray-200"
             : nr.status === "running"   ? "bg-blue-400 animate-pulse"
             : nr.status === "completed" ? "bg-green-400"
             : nr.status === "failed"    ? "bg-red-400"
+            : nr.status === "skipped"   ? "bg-gray-300"
             : "bg-gray-300";
 
           return (
-            <div key={node.id} className="px-4 py-2">
+            <div key={node.id} className={`px-4 py-2 ${isSkipped ? "opacity-40" : ""}`}>
               <button
                 onClick={() => hasContent && setExpanded(isOpen ? null : node.id)}
                 className={`w-full flex items-center gap-2.5 text-left ${hasContent ? "cursor-pointer" : "cursor-default"}`}
               >
                 <span className="text-[10px] text-gray-300 w-4 shrink-0 text-right">{idx + 1}</span>
                 <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
-                <span className="text-xs font-medium text-gray-700 flex-1 truncate">{label}</span>
+                <span className={`text-xs font-medium flex-1 truncate ${isSkipped ? "text-gray-400 line-through" : "text-gray-700"}`}>{label}</span>
                 {nr?.status === "running"   && <Loader2 size={11} className="animate-spin text-blue-500 shrink-0" />}
                 {nr?.status === "failed"    && <span className="text-[10px] text-red-500 shrink-0">오류</span>}
+                {nr?.status === "skipped"   && <span className="text-[10px] text-gray-400 shrink-0">건너뜀</span>}
                 {hasContent && (isOpen
                   ? <ChevronUp size={12} className="text-gray-400 shrink-0" />
                   : <ChevronDown size={12} className="text-gray-400 shrink-0 opacity-0 group-hover:opacity-100" />

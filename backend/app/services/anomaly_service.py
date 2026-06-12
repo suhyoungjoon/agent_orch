@@ -166,6 +166,43 @@ async def check_run_anomalies(
     return detected
 
 
+async def record_tool_loop(
+    db: AsyncSession,
+    *,
+    agent_id: str,
+    agent_name: str,
+    run_id: str | None,
+    team_id: str | None,
+    tool_name: str,
+    repeat_count: int,
+) -> AnomalyEventORM:
+    """동일 툴 반복 호출(무한루프) 감지 이벤트 기록.
+
+    workflow_executor._run_node_inner() 에서 _MAX_TOOL_REPEATS 임계값 도달 시 호출.
+    """
+    score = min(0.5 + (repeat_count - 5) * 0.1, 1.0)
+    desc = f"'{tool_name}' 툴이 {repeat_count}회 연속 호출됨 (워크플로우 노드 실행 중)"
+    analysis, rec = await _get_claude_analysis(agent_name, "tool_loop", desc, score)
+
+    evt = AnomalyEventORM(
+        id=str(uuid.uuid4()),
+        agent_id=agent_id,
+        run_id=run_id,
+        team_id=team_id,
+        anomaly_type="tool_loop",
+        severity=_score_to_severity(score),
+        score=round(score, 3),
+        baseline_value=5.0,
+        observed_value=float(repeat_count),
+        description=desc,
+        claude_analysis=analysis,
+        claude_recommendation=rec,
+    )
+    db.add(evt)
+    await db.flush()
+    return evt
+
+
 async def list_anomalies(
     db: AsyncSession,
     *,

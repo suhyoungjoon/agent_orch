@@ -28,6 +28,28 @@ from app.agents.tools import get_tools_for_agent, execute_tool
 
 _DEFAULT_MODEL = "claude-sonnet-4-6"
 _MAX_ITERATIONS = 10
+_NODE_TIMEOUT_SECONDS = 180   # 노드당 최대 실행 시간
+_MAX_TOOL_REPEATS = 5         # 동일 툴 연속 호출 임계값 (무한루프 방지)
+
+# ── LLM API 에러 → 사용자 친화적 메시지 변환 ─────────────────────────
+def _classify_api_error(exc: Exception) -> tuple[str, bool]:
+    """(메시지, 재시도_가능) 반환."""
+    if isinstance(exc, anthropic.RateLimitError):
+        return "API 요청 한도를 초과했습니다. 잠시 후 자동으로 재시도합니다.", True
+    if isinstance(exc, anthropic.APITimeoutError):
+        return f"LLM 응답 시간 초과 ({_NODE_TIMEOUT_SECONDS}초). 작업이 너무 복잡할 수 있습니다.", False
+    if isinstance(exc, asyncio.TimeoutError):
+        return f"노드 실행 시간 초과 ({_NODE_TIMEOUT_SECONDS}초).", False
+    if isinstance(exc, anthropic.InternalServerError):
+        msg = str(exc)
+        if "overloaded" in msg.lower():
+            return "Claude API가 일시적으로 과부하 상태입니다. 잠시 후 재시도해주세요.", True
+        return "Claude API 내부 오류가 발생했습니다.", False
+    if isinstance(exc, anthropic.APIConnectionError):
+        return "API 서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.", True
+    if isinstance(exc, anthropic.AuthenticationError):
+        return "API 키가 유효하지 않습니다. 환경 변수를 확인해주세요.", False
+    return f"예기치 않은 오류: {type(exc).__name__}: {str(exc)[:200]}", False
 
 
 # ── 위상 정렬 (기존 유지) ─────────────────────────────────────────────
@@ -95,9 +117,35 @@ def _build_context_from_edges(
     return "\n\n".join(parts)
 
 
-# ── 단일 에이전트 노드 실행 (기존 유지) ──────────────────────────────
+# ── 단일 에이전트 노드 실행 ────────────────────────────────────────────
 async def _run_node(agent_def, task: str, context: Optional[str]) -> tuple[str, bool]:
-    """Claude Tool Use ReAct 루프로 단일 에이전트 노드 실행."""
+    """Claude Tool Use ReAct 루프로 단일 에이전트 노드 실행.
+
+    - 노드당 _NODE_TIMEOUT_SECONDS 타임아웃
+    - LLM API 에러 분류 및 친화적 메시지 반환
+    - 동일 툴 _MAX_TOOL_REPEATS 연속 호출 시 루프 조기 차단
+    """
+    try:
+        return await asyncio.wait_for(
+            _run_node_inner(agent_def, task, context),
+            timeout=_NODE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        msg, _ = _classify_api_error(asyncio.TimeoutError())
+        return msg, False
+    except (
+        anthropic.RateLimitError,
+        anthropic.APITimeoutError,
+        anthropic.InternalServerError,
+        anthropic.APIConnectionError,
+        anthropic.AuthenticationError,
+    ) as exc:
+        msg, _ = _classify_api_error(exc)
+        return msg, False
+
+
+async def _run_node_inner(agent_def, task: str, context: Optional[str]) -> tuple[str, bool]:
+    """실제 ReAct 루프 본체 (타임아웃 래퍼 분리)."""
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     system_prompt = (
@@ -115,6 +163,10 @@ async def _run_node(agent_def, task: str, context: Optional[str]) -> tuple[str, 
     messages = [{"role": "user", "content": user_message}]
     tools = get_tools_for_agent(agent_def.tags or [], agent_def.role)
     result_str = ""
+
+    # 무한루프 감지: 툴별 연속 호출 카운터
+    tool_call_counts: dict[str, int] = {}
+    last_tool: str | None = None
 
     for _ in range(_MAX_ITERATIONS):
         response = await client.messages.create(
@@ -136,6 +188,37 @@ async def _run_node(agent_def, task: str, context: Optional[str]) -> tuple[str, 
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
+                    # 무한루프 감지: 동일 툴 연속 호출 카운트
+                    if block.name == last_tool:
+                        tool_call_counts[block.name] = tool_call_counts.get(block.name, 0) + 1
+                    else:
+                        tool_call_counts[block.name] = 1
+                        last_tool = block.name
+
+                    if tool_call_counts.get(block.name, 0) >= _MAX_TOOL_REPEATS:
+                        # 이상감지 서비스에 tool_loop 이벤트 기록
+                        try:
+                            from app.services.anomaly_service import record_tool_loop
+                            async with AsyncSessionLocal() as _db:
+                                await record_tool_loop(
+                                    _db,
+                                    agent_id=getattr(agent_def, "id", "unknown"),
+                                    agent_name=getattr(agent_def, "name", "unknown"),
+                                    run_id=None,
+                                    team_id=getattr(agent_def, "team_id", None),
+                                    tool_name=block.name,
+                                    repeat_count=tool_call_counts[block.name],
+                                )
+                                await _db.commit()
+                        except Exception:
+                            pass  # 이상감지 실패가 실행을 막지 않음
+
+                        return (
+                            f"무한 루프 감지: '{block.name}' 툴이 {_MAX_TOOL_REPEATS}회 연속 호출됐습니다. "
+                            "작업을 다르게 접근하거나 더 구체적인 목표를 설정해주세요.",
+                            False,
+                        )
+
                     output = await execute_tool(block.name, block.input)
                     tool_results.append({
                         "type": "tool_result",
@@ -232,6 +315,17 @@ async def _execute_sequential(wfr_id: str, workflow: WorkflowORM, task: str) -> 
 
         await _update_node(wfr_id, node_id, node_data)
         if not succeeded:
+            # 실패한 노드 이후 남은 노드들을 skipped로 마킹
+            remaining = sorted_ids[sorted_ids.index(node_id) + 1:]
+            for rem_id in remaining:
+                rem_node = nodes_by_id.get(rem_id, {})
+                rem_data = rem_node.get("data", {})
+                await _update_node(wfr_id, rem_id, {
+                    "status": "skipped",
+                    "agent_id": rem_data.get("agentId", ""),
+                    "agent_name": rem_data.get("label", rem_id),
+                    "error": f"이전 노드 '{agent_name}' 실패로 건너뜁니다.",
+                })
             await _fail_run(wfr_id, f"노드 '{agent_name}' 실행 실패: {result[:200]}")
             return
 
