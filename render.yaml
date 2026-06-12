@@ -1,4 +1,5 @@
 services:
+  # ── FastAPI 백엔드 ──────────────────────────────────────────────────
   - type: web
     name: agentflow-backend
     runtime: python
@@ -6,16 +7,26 @@ services:
     autoDeploy: true
     buildCommand: pip install --no-cache-dir --prefer-binary -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.3
       - key: DATABASE_URL
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
+        fromDatabase:
+          name: agentflow-db
+          property: connectionString
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGINS
         value: https://agent-orch.vercel.app
+      - key: APP_ENV
+        value: production
+
+  # ── PostgreSQL (Render 무료 DB) ─────────────────────────────────────
+databases:
+  - name: agentflow-db
+    databaseName: agentflow
+    user: agentflow
+    plan: free

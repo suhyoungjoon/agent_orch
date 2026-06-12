@@ -1,0 +1,59 @@
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agentflow
+      POSTGRES_USER: agentflow
+      POSTGRES_PASSWORD: agentflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentflow -d agentflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI 백엔드 ──────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agentflow:agentflow@db:5432/agentflow
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-in-prod}
+      CORS_ORIGINS: http://localhost:3000
+      APP_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # 개발 시 코드 변경 즉시 반영 (프로덕션에서는 제거)
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Next.js 프론트엔드 ──────────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-dev-nextauth-secret}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

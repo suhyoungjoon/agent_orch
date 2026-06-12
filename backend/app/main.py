@@ -124,6 +124,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  시뮬레이션 에이전트 시드 오류: {e}")
 
+    # 데모 데이터 시드 (에이전트 4종 + 실행 기록 + 워크플로우)
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        from seed_demo import seed_demo
+        await seed_demo()
+    except Exception as e:
+        print(f"⚠️  데모 시드 오류: {e}")
+
     # cron 스케줄러 백그라운드 태스크 시작
     scheduler_task = asyncio.create_task(_cron_scheduler())
     yield
