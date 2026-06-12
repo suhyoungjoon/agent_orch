@@ -16,20 +16,20 @@ MemoryType = Literal["none", "short", "long"]
 
 
 class AgentBase(BaseModel):
+    """응답 직렬화 기반 — 길이 제약 없음 (기존 DB 데이터 호환)."""
+    name: str
+    role: str
+    goal: str
+    backstory: str
+
+
+# ── 생성 요청 (입력 전용 — 여기에만 제약 적용) ─────────────────────────
+class AgentCreate(AgentBase):
     name: str = Field(min_length=1, max_length=100)
     role: str = Field(min_length=1, max_length=50)
     goal: str = Field(min_length=1, max_length=500)
     backstory: str = Field(min_length=1, max_length=1000)
 
-    @field_validator("name", "role")
-    @classmethod
-    def no_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("공백만으로 구성될 수 없습니다.")
-        return v.strip()
-
-
-class AgentCreate(AgentBase):
     description: Optional[str] = Field(default=None, max_length=500)
     team_id: Optional[str] = None
     input_schema: Optional[dict] = None
@@ -38,7 +38,6 @@ class AgentCreate(AgentBase):
     version: str = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     visibility: AgentVisibility = "team"
 
-    # 고급 스튜디오 필드
     llm_provider: LLMProvider = "claude"
     model_name: Optional[str] = Field(default=None, max_length=100)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
@@ -51,7 +50,15 @@ class AgentCreate(AgentBase):
     timeout_seconds: int = Field(default=120, ge=10, le=600)
     is_studio_agent: bool = False
 
+    @field_validator("name", "role")
+    @classmethod
+    def no_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("공백만으로 구성될 수 없습니다.")
+        return v.strip()
 
+
+# ── 수정 요청 (입력 전용) ────────────────────────────────────────────
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     role: Optional[str] = Field(default=None, min_length=1, max_length=50)
@@ -66,7 +73,6 @@ class AgentUpdate(BaseModel):
     version: Optional[str] = Field(default=None, pattern=r"^\d+\.\d+\.\d+$")
     visibility: Optional[AgentVisibility] = None
 
-    # 고급 스튜디오 필드
     llm_provider: Optional[LLMProvider] = None
     model_name: Optional[str] = Field(default=None, max_length=100)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
@@ -84,6 +90,7 @@ class VisibilityUpdate(BaseModel):
     visibility: AgentVisibility
 
 
+# ── 응답 (DB → API 직렬화, 제약 없음) ────────────────────────────────
 class AgentResponse(AgentBase):
     id: str
     status: AgentStatus = AgentStatus.IDLE
@@ -101,7 +108,6 @@ class AgentResponse(AgentBase):
     success_rate: float = 0.0
     usage_count: int = 0
 
-    # 고급 스튜디오 필드
     llm_provider: LLMProvider = "claude"
     model_name: Optional[str] = None
     temperature: Optional[float] = None
