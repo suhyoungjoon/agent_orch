@@ -6,7 +6,7 @@ AI 에이전트 오케스트레이션 웹 플랫폼. 사용자가 자연어로 �
 
 | 단계 | 목표 | 핵심 작업 |
 |------|------|-----------|
-| **1단계** (현재) | 단일 에이전트 실행 + DB 기반 관리 | 에이전트 CRUD, CrewAI 실행, SQLite DB, Claude intent 파싱 |
+| **1단계** (현재) | 단일 에이전트 실행 + DB 기반 관리 | 에이전트 CRUD, Claude Tool Use 실행, SQLite DB, Claude intent 파싱 |
 | **2단계** | 팀 편성 + 멀티 에이전트 워크플로 | `teams` 테이블, `team_id` FK, 워크플로 실행 오케스트레이션 |
 | **3단계** | 시너지 추천 + 자동 구성 | `find_compatible()`, tags/schema 매칭, Claude가 최적 팀 자동 제안 |
 
@@ -17,9 +17,10 @@ AI 에이전트 오케스트레이션 웹 플랫폼. 사용자가 자연어로 �
 | 영역 | 기술 | 버전 |
 |------|------|------|
 | 프론트엔드 | Next.js (App Router), TypeScript, Tailwind CSS | Next.js 14 |
-| 백엔드 | Python, FastAPI, CrewAI | Python 3.13, FastAPI 0.136.3, CrewAI 1.14.6 |
-| DB / ORM | SQLAlchemy async, Alembic, SQLite (개발) | SQLAlchemy 2.0.50, Alembic 1.18.4 |
-| AI | OpenAI (에이전트 실행), Anthropic Claude (intent 파싱) | anthropic 0.105.2 |
+| 백엔드 | Python, FastAPI | Python 3.13, FastAPI 0.136.3 |
+| 에이전트 실행 | CrewAI 의존성 없음 — Anthropic Claude Tool Use 기반 커스텀 ReAct 루프 (`backend/app/agents/executor.py`, `backend/app/services/workflow_executor.py`) | anthropic >=0.40.0, 기본 모델 `claude-sonnet-4-6` |
+| DB / ORM | SQLAlchemy async, Alembic, SQLite (개발) / PostgreSQL+asyncpg (운영) | SQLAlchemy 2.0.50, Alembic 1.18.4 |
+| AI | Anthropic Claude — 에이전트 실행(Tool Use), intent 파싱, 시너지/이상탐지/ROI 심층 분석 | anthropic >=0.40.0 |
 | 설정 | pydantic-settings, python-dotenv | — |
 
 ---
@@ -29,10 +30,11 @@ AI 에이전트 오케스트레이션 웹 플랫폼. 사용자가 자연어로 �
 ```
 agentflow/
 ├── CLAUDE.md
+├── docker-compose.yml                    # Postgres 16 + backend + frontend 로컬 풀스택
 ├── backend/
 │   ├── alembic/
 │   │   ├── env.py                        # async 마이그레이션 설정
-│   │   └── versions/
+│   │   └── versions/                     # 0001~0021, 순차 추가/비파괴 마이그레이션
 │   │       ├── 0001_initial_agents.py    # agents 테이블 + ix_agents_team_id
 │   │       ├── 0002_add_runs.py          # runs 테이블
 │   │       ├── 0003_add_users_teams.py   # users, teams, team_members 테이블
@@ -40,81 +42,157 @@ agentflow/
 │   │       ├── 0005_run_tokens.py        # runs.user_id, input_tokens, output_tokens, model
 │   │       ├── 0006_run_samples.py       # runs.input_sample, output_sample, duration_ms
 │   │       ├── 0007_workflows.py         # workflows 테이블
-│   │       └── 0008_run_approval.py      # runs 승인 워크플로 컬럼 6개
+│   │       ├── 0008_run_approval.py      # runs 승인 워크플로 컬럼 6개
+│   │       ├── 0009_agent_team_fk.py     # agents.team_id FK 제약 전환
+│   │       ├── 0010_audit_logs.py        # audit_logs 불변 테이블 (EU AI Act 플래그)
+│   │       ├── 0011_agent_credentials.py # agent_credentials 테이블 (bcrypt API 키, 스코프)
+│   │       ├── 0012_anomaly_events.py    # anomaly_events 테이블
+│   │       ├── 0013_a2a_chains.py        # a2a_chains 테이블 (위임 토큰, 깊이 제한)
+│   │       ├── 0014_roi_snapshots.py     # roi_snapshots 테이블
+│   │       ├── ...                       # workflow_runs, mcp_servers, agent_mcp_tools,
+│   │       │                              # triggers, hooks 테이블 추가
+│   │       └── 0021_world_state.py       # world_states 테이블 (시뮬레이션)
 │   ├── scripts/
-│   │   └── seed.py                       # 초기 에이전트 4개 DB 적재
+│   │   ├── seed.py                       # 수동: 초기 에이전트 4개 DB 적재
+│   │   ├── seed_demo.py                  # 서버 시작 시 자동 실행: 데모 에이전트·실행·워크플로
+│   │   ├── seed_full.py                  # 수동: 대규모 데모 데이터셋
+│   │   └── seed_simulation.py            # 수동: 시뮬레이션 에이전트/워크플로 시드
+│   ├── tests/                            # pytest 스위트 (in-memory SQLite, 60개 테스트)
+│   │   ├── conftest.py
+│   │   ├── test_workflow_executor.py
+│   │   ├── test_sim_tools.py
+│   │   └── test_workflow_api.py
 │   ├── alembic.ini
 │   ├── requirements.txt
+│   ├── requirements-test.txt
+│   ├── Dockerfile
 │   ├── .env.example
 │   ├── .venv/
 │   └── app/
-│       ├── main.py                       # FastAPI 앱, lifespan, CORS
+│       ├── main.py                       # FastAPI 앱, lifespan(마이그레이션·admin/demo/시뮬레이션 시드·cron 스케줄러), CORS, audit 미들웨어
 │       ├── core/
-│       │   ├── config.py                 # pydantic-settings (DATABASE_URL 등)
+│       │   ├── config.py                 # pydantic-settings (DATABASE_URL 등, postgres:// 자동 변환)
 │       │   ├── database.py               # async engine, get_db() DI
+│       │   ├── deps.py                   # get_current_user / get_optional_user / require_admin 등
+│       │   ├── security.py               # PyJWT + bcrypt
 │       │   └── pubsub.py                 # asyncio pub-sub (per-run + global 채널)
 │       ├── db/
 │       │   ├── base.py                   # DeclarativeBase
-│       │   ├── models/
-│       │   │   ├── agent_orm.py          # AgentORM (visibility, forked_from 포함)
+│       │   ├── models/                   # *_orm.py, 16개 테이블
+│       │   │   ├── agent_orm.py          # AgentORM (visibility, forked_from, source_workflow_id 포함)
 │       │   │   ├── run_orm.py            # RunORM (토큰·샘플·승인 필드 포함)
 │       │   │   ├── user_orm.py           # UserORM
 │       │   │   ├── team_orm.py           # TeamORM, TeamMemberORM
-│       │   │   └── workflow_orm.py       # WorkflowORM (nodes/edges JSON)
+│       │   │   ├── workflow_orm.py       # WorkflowORM (nodes/edges JSON, execution_mode)
+│       │   │   ├── workflow_run_orm.py   # WorkflowRunORM (워크플로 실행 인스턴스)
+│       │   │   ├── audit_log_orm.py      # AuditLogORM (불변, EU AI Act 위험 분류)
+│       │   │   ├── agent_credential_orm.py # AgentCredentialORM (bcrypt API 키, 스코프 9종)
+│       │   │   ├── anomaly_event_orm.py  # AnomalyEventORM
+│       │   │   ├── a2a_chain_orm.py      # A2AChainORM (위임 체인, 깊이 5단계 제한)
+│       │   │   ├── roi_snapshot_orm.py   # ROISnapshotORM
+│       │   │   ├── mcp_server_orm.py     # MCPServerORM (endpoint, tools_cache)
+│       │   │   ├── agent_mcp_tool_orm.py # AgentMCPToolORM (에이전트-MCP 도구 연결)
+│       │   │   ├── trigger_orm.py        # TriggerORM (schedule/event/webhook)
+│       │   │   ├── hook_orm.py           # HookORM (before_run/after_run/on_error)
+│       │   │   └── world_state_orm.py    # WorldStateORM (시뮬레이션 JSON 상태)
 │       │   └── repositories/
 │       │       ├── agent_repo.py         # CRUD + fork + find_compatible_candidates
 │       │       ├── run_repo.py           # CRUD + approve/reject/get_pending_approval
 │       │       ├── user_repo.py          # CRUD
 │       │       ├── team_repo.py          # CRUD + 멤버 관리
-│       │       └── workflow_repo.py      # CRUD (팀 범위)
+│       │       ├── workflow_repo.py      # CRUD (팀 범위)
+│       │       └── workflow_run_repo.py  # 워크플로 실행 인스턴스 CRUD
+│       │       # triggers/hooks/mcp_servers/a2a_chains/anomaly_events/audit_logs/
+│       │       # roi_snapshots/world_states 는 repository 없이 services/*에서 직접 ORM 조회
 │       ├── models/
 │       │   ├── agent.py                  # AgentCreate, AgentResponse (Pydantic)
 │       │   ├── run.py                    # RunRequest/Response, PendingRunResponse, ApprovalAction
 │       │   ├── intent.py                 # ParseIntentRequest/Response, AgentConfig
 │       │   ├── dashboard.py              # DashboardSummary, MemberStat, AgentStat, RunLog, TeamDashboardData
-│       │   ├── workflow.py               # WorkflowCreate/Update/Response
+│       │   ├── workflow.py               # WorkflowCreate/Update/Response (execution_mode 포함)
+│       │   ├── workflow_run.py           # WorkflowRun 요청/응답 모델
 │       │   ├── synergy.py                # SynergyCandidate, SynergyResponse
 │       │   ├── report.py                 # EnterpriseReportData 외 집계 모델
+│       │   ├── team.py / user.py         # 팀/유저 Pydantic 모델
 │       │   └── log.py                    # LogResponse (stub)
-│       ├── services/
+│       ├── services/                     # 14개 모듈, 클래스 대신 plain async 함수 위주
 │       │   ├── intent_service.py         # mock / Claude API 분기 로직
-│       │   └── synergy_service.py        # 알고리즘 스코어링 + Claude AI 분석
+│       │   ├── synergy_service.py        # 알고리즘 스코어링 + Claude AI 분석
+│       │   ├── audit_service.py          # audit_logs 기록 + EU AI Act 위험 분류
+│       │   ├── credential_service.py     # 에이전트 API 키 발급/폐기
+│       │   ├── anomaly_service.py        # 이상탐지 규칙 3종 + Claude 심층 분석
+│       │   ├── a2a_service.py            # 위임 토큰, 체인 깊이 제한(5), 스코프 교집합
+│       │   ├── roi_service.py            # 비용·절감시간·ROI 계산 + Claude 인사이트
+│       │   ├── sprawl_service.py         # 섀도우 AI·스프롤 탐지
+│       │   ├── mcp_service.py            # MCP 서버 JSON-RPC 2.0 클라이언트 (initialize/tools.list/tools.call)
+│       │   ├── trigger_service.py        # 커스텀 5필드 cron 파서, event/webhook 트리거
+│       │   ├── hook_service.py           # 라이프사이클 훅(before_run/after_run/on_error), notify 웹훅 발송
+│       │   ├── world_state_service.py    # 시뮬레이션 World State CRUD + 인메모리 캐시 + MFA 시드
+│       │   ├── workflow_executor.py      # 멀티 에이전트 DAG 실행 (순차/계층, 토폴로지 정렬, 엣지 매핑)
+│       │   └── sim_seed_service.py       # 시뮬레이션 에이전트(planner/developer/operator)+워크플로 자동 시드
 │       ├── agents/
 │       │   ├── registry.py               # DB 기반 에이전트 조회
-│       │   └── executor.py               # CrewAI 비동기 실행, 승인 모드, stats 갱신
+│       │   ├── executor.py               # 단일 에이전트 Claude Tool Use ReAct 루프, 승인 모드, 팀(워크플로) 에이전트 위임, stats 갱신
+│       │   ├── tools.py                  # 내장 도구 스키마/디스패치 (calculator, datetime, web_search_20260209, fetch_webpage)
+│       │   └── sim_tools.py              # 시뮬레이션 전용 도구 9개 (World State 조작 + audit_logs 기록)
 │       └── api/
-│           └── v1/
+│           └── v1/                       # 17개 라우터, __init__.py가 고정 순서로 조립
 │               ├── __init__.py           # v1_router 조립
+│               ├── auth.py               # /auth/* (register, login, oauth-sync, me)
 │               ├── agents.py             # /agents/* (fork, visibility, synergy 포함)
 │               ├── runs.py               # /runs/* (WebSocket + SSE + 승인 엔드포인트)
-│               ├── teams.py              # /teams/* (CRUD + 멤버 + 에이전트 레지스트리)
+│               ├── workflows.py          # /workflows/* CRUD + save-as-agent
+│               ├── teams.py              # /teams/* (CRUD + 멤버 + 에이전트 레지스트리 + 대시보드)
 │               ├── dashboard.py          # /teams/{id}/dashboard
-│               ├── parse_intent.py       # /parse-intent/ 엔드포인트
-│               ├── workflows.py          # /workflows/* CRUD
 │               ├── reports.py            # /reports/enterprise
+│               ├── audit.py              # /audit/* (감사 로그 + 요약)
+│               ├── credentials.py        # /agents/{id}/credentials/* (에이전트 API 키)
+│               ├── anomalies.py          # /anomalies/* (이상탐지 목록·통계·해결)
+│               ├── a2a.py                # /a2a/chains/* (A2A 위임 체인)
+│               ├── roi.py                # /roi/* (ROI 스냅샷·추이·스프롤)
+│               ├── mcp.py                # /mcp/* (MCP 서버 등록/테스트/도구 연결)
+│               ├── triggers.py           # /triggers/*, /hooks/*, /webhooks/{token} (3개 라우터 정의)
+│               ├── simulation.py         # /simulation/* (World State 시나리오 CRUD)
+│               ├── parse_intent.py       # /parse-intent/ 엔드포인트
 │               └── logs.py              # stub (2단계)
 └── frontend/
+    ├── middleware.ts                     # NextAuth 라우트 가드 (미인증 → /login)
+    ├── types/next-auth.d.ts              # 세션 타입 확장 (role, teamId, accessToken)
     ├── app/
     │   ├── page.tsx                      # 메인 페이지 (ApprovalQueue + ParseIntent + TeamRegistry + RunHistory)
+    │   ├── login/page.tsx, register/page.tsx
     │   ├── dashboard/page.tsx            # /dashboard 라우트 (TeamDashboard)
     │   ├── workflow/page.tsx             # /workflow 라우트 (WorkflowBuilder)
     │   ├── report/page.tsx               # /report 라우트 (EnterpriseReport)
+    │   ├── governance/page.tsx           # /governance — 감사 로그 + EU AI Act 배너
+    │   ├── security/page.tsx             # /security — 이상탐지 + 스프롤 현황
+    │   ├── a2a/page.tsx                  # /a2a — A2A 체인 트리 시각화
+    │   ├── roi/page.tsx                  # /roi — ROI KPI + Claude 인사이트
+    │   ├── mcp/page.tsx                  # /mcp — MCP 서버 관리 (등록/테스트/도구 연결)
+    │   ├── studio/                       # 에이전트 스튜디오 (고급 에이전트 편집기)
+    │   │   ├── page.tsx                  # 목록
+    │   │   ├── new/page.tsx              # 신규 생성
+    │   │   └── [agentId]/page.tsx        # 편집
+    │   ├── api/auth/[...nextauth]/route.ts  # NextAuth 핸들러
     │   └── layout.tsx
-    ├── components/
-    │   ├── AppHeader.tsx                 # 공통 헤더 (홈/대시보드/워크플로/리포트)
+    ├── components/                       # 18개 컴포넌트, flat 디렉토리
+    │   ├── AppHeader.tsx                 # 공통 헤더 (홈/대시보드/워크플로/리포트/거버넌스/보안/A2A/ROI/MCP)
     │   ├── AgentCard.tsx                 # 카드 UI (WebSocket 실행 상태, 승인 요청 토글)
     │   ├── AgentFormModal.tsx            # 에이전트 생성/편집 모달 (visibility 설정)
+    │   ├── AgentStudio.tsx               # 고급 에이전트 편집기 (시스템 프롬프트, 도구, MCP 연결)
     │   ├── ApprovalQueue.tsx             # 승인 대기 큐 (admin 전용, SSE 실시간)
     │   ├── TeamRegistry.tsx              # 팀/공개 에이전트 탭 + 검색·태그 필터
     │   ├── TeamDashboard.tsx             # 팀 통계 대시보드 (토큰·비용·성공률)
     │   ├── SynergyPanel.tsx              # 시너지 추천 모달 (점수 바 + Claude AI 분석)
     │   ├── ParseIntent.tsx               # 자연어 입력 + 에이전트 구성 미리보기
     │   ├── RunHistory.tsx                # 실행 기록 (SSE 실시간)
-    │   ├── WorkflowBuilder.tsx           # React Flow 드래그&드롭 빌더 + 충돌 감지
+    │   ├── WorkflowBuilder.tsx           # React Flow 드래그&드롭 빌더 + 충돌 감지 + 엣지 매핑
     │   ├── WorkflowAgentNode.tsx         # React Flow 커스텀 노드 (역할별 색상)
     │   ├── EnterpriseReport.tsx          # 전사 리포트 (개요 + 팀 비교 + TOP10 + 추이)
     │   └── UserMenu.tsx                  # 유저 이름·역할 배지·로그아웃
-    ├── lib/api.ts                        # 백엔드 API 클라이언트 + 타입 정의
+    ├── lib/
+    │   ├── api.ts                        # 백엔드 API 클라이언트 + 타입 정의
+    │   └── auth.ts                       # NextAuth options (Credentials + Google)
     └── tailwind.config.ts
 ```
 
@@ -127,7 +205,7 @@ agentflow/
 ```bash
 cd backend
 source .venv/bin/activate
-cp .env.example .env          # OPENAI_API_KEY, ANTHROPIC_API_KEY 입력
+cp .env.example .env          # ANTHROPIC_API_KEY 입력
 alembic upgrade head          # DB 테이블 생성 (최초 1회)
 python scripts/seed.py        # 초기 에이전트 적재 (최초 1회)
 uvicorn app.main:app --reload --port 8000
@@ -224,8 +302,22 @@ pytest tests/test_workflow_api.py -v
 | GET | `/api/v1/teams/{id}/agents` | 구현 | 팀 에이전트 레지스트리 (검색·태그 필터) |
 | GET | `/api/v1/teams/{id}/dashboard` | 구현 | 팀 사용 현황 대시보드 (토큰·비용·성공률) |
 | GET | `/api/v1/reports/enterprise` | 구현 | 전사 리포트 (cross-team 집계, 인증 필요) |
+| POST | `/api/v1/workflows/{id}/save-as-agent` | 구현 | 워크플로를 단일 팀 에이전트로 저장 |
+| GET/POST | `/api/v1/mcp/servers` | 구현 | MCP 서버 목록/등록 |
+| DELETE | `/api/v1/mcp/servers/{id}` | 구현 | MCP 서버 삭제 |
+| POST | `/api/v1/mcp/servers/{id}/test` | 구현 | MCP 서버 연결 테스트 |
+| GET | `/api/v1/mcp/servers/{id}/tools` | 구현 | MCP 서버 도구 목록 조회 |
+| GET/PUT | `/api/v1/mcp/agents/{agent_id}/tools` | 구현 | 에이전트-MCP 도구 연결 조회/설정 |
+| GET/POST | `/api/v1/triggers/` | 구현 | 트리거 목록/생성 (schedule/event/webhook) |
+| PATCH/DELETE | `/api/v1/triggers/{id}` | 구현 | 트리거 수정/삭제 |
+| POST | `/api/v1/triggers/{id}/fire` | 구현 | 트리거 수동 실행 |
+| POST | `/api/v1/webhooks/{token}` | 구현 | 외부에서 호출하는 웹훅 트리거 엔드포인트 (인증 불필요, 토큰 기반) |
+| GET/POST | `/api/v1/hooks/` | 구현 | 라이프사이클 훅 목록/생성 (before_run/after_run/on_error) |
+| PATCH/DELETE | `/api/v1/hooks/{id}` | 구현 | 훅 수정/삭제 |
 | GET | `/api/v1/logs/` | stub | 2단계 구현 예정 |
 | GET | `/docs` | — | Swagger UI |
+
+> 감사(audit)/이상탐지(anomalies)/A2A/ROI/에이전트 자격증명(credentials)/시뮬레이션(simulation) 엔드포인트는 아래 "6대 거버넌스 갭" 및 "가상 조직 시뮬레이션" 섹션의 표를 참고.
 
 ---
 
@@ -252,7 +344,7 @@ pytest tests/test_workflow_api.py -v
 `POST /api/v1/parse-intent/` — 자연어를 에이전트 구성 JSON으로 변환.
 
 - `ANTHROPIC_API_KEY` 미설정 → mock 응답 반환 (`is_mock: true`)
-- API 키 설정 시 → `claude-opus-4-7` + adaptive thinking 실제 호출
+- API 키 설정 시 → `claude-sonnet-4-6` 실제 호출 (`backend/app/services/intent_service.py`)
 - 응답 스키마: `{ agents: [{name, role, goal, tools, execution_order}], is_mock, model_used }`
 
 2단계에서는 이 엔드포인트의 응답을 바탕으로 워크플로를 자동 생성하는 흐름으로 확장 예정.
@@ -263,13 +355,13 @@ pytest tests/test_workflow_api.py -v
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `DATABASE_URL` | `sqlite+aiosqlite:///./agentflow.db` | PostgreSQL 전환 시 `postgresql+asyncpg://...` |
-| `OPENAI_API_KEY` | — | CrewAI 에이전트 실행 |
-| `OPENAI_MODEL` | `gpt-4o-mini` | CrewAI LLM 모델 |
-| `ANTHROPIC_API_KEY` | — | parse-intent Claude 호출 |
-| `CORS_ORIGINS` | `http://localhost:3000` | 허용할 프론트 오리진 |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./agentflow.db` | PostgreSQL 전환 시 `postgresql+asyncpg://...` (postgres:// 형식도 자동 변환) |
+| `ANTHROPIC_API_KEY` | — | 에이전트 실행(Tool Use), parse-intent, 시너지/이상탐지/ROI 심층 분석 Claude 호출 (미설정 시 mock 응답) |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | 에이전트 실행 기본 모델 (에이전트별 `model_name`으로 재정의 가능) |
+| `CORS_ORIGINS` | `http://localhost:3000` | 허용할 프론트 오리진 (Vercel 프리뷰 도메인·localhost는 항상 허용) |
 | `JWT_SECRET` | `change-me-in-production` | 백엔드 JWT 서명 키 |
 | `ACCESS_TOKEN_EXPIRE_DAYS` | `7` | JWT 만료일 |
+| `APP_ENV` | — | `development` 설정 시 SQLAlchemy SQL 에코 로깅 활성화 |
 | `NEXTAUTH_SECRET` | — | NextAuth 세션 암호화 키 (프론트) |
 | `NEXTAUTH_URL` | `http://localhost:3000` | NextAuth 콜백 URL (프론트) |
 | `GOOGLE_CLIENT_ID` | — | Google OAuth (선택, 프론트) |
@@ -280,7 +372,7 @@ pytest tests/test_workflow_api.py -v
 ## 진행 상태
 
 ### 완료
-- [x] FastAPI + CrewAI 백엔드 기반 세팅
+- [x] FastAPI 백엔드 기반 세팅 (에이전트 실행은 CrewAI가 아닌 Anthropic Claude Tool Use 기반 커스텀 ReAct 루프)
 - [x] SQLAlchemy 2.x async ORM + Alembic 마이그레이션 (0001~0003)
 - [x] 에이전트 필드 확장 7개 (team_id, input_schema, output_schema, tags, version, success_rate, usage_count)
 - [x] Repository 패턴 (AgentRepository + increment_usage_and_rate)
@@ -526,3 +618,28 @@ World State = 가상 조직의 전체 상태를 JSON으로 관리하는 DB 테�
 | 2단계 | World State 모듈 (DB + API) | ✅ 완료 |
 | 3단계 | 시뮬레이션 도구 9개 구현 + execute_tool() 통합 | ✅ 완료 |
 | 4단계 | 시뮬레이션 에이전트 3개 + 워크플로 시드 | ✅ 완료 |
+
+---
+
+## MCP 서버 연동 / 트리거·웹훅·훅 / 에이전트 스튜디오 (완료)
+
+위 시뮬레이션 작업과 별도로 진행된 외부 도구 연동·자동화·고급 편집 기능. Alembic 마이그레이션으로 `mcp_servers`, `agent_mcp_tools`, `triggers`, `hooks` 테이블이 추가됐다.
+
+### MCP (Model Context Protocol) 연동
+- `backend/app/services/mcp_service.py` — 외부 MCP 서버에 JSON-RPC 2.0(`initialize`/`tools/list`/`tools/call`)으로 접속하는 커스텀 클라이언트 (SDK 미사용)
+- `mcp_servers` 테이블 — 사용자가 등록한 MCP 서버의 `endpoint`, 도구 목록(`tools_cache`) 저장
+- `agent_mcp_tools` 테이블 — 에이전트별로 어떤 MCP 도구를 쓸지 연결
+- 실행 시 MCP 도구는 `mcp_{server_id_short}_{tool_name}` 형태로 이름이 붙어 내장 도구와 함께 Claude Tool Use 목록에 병합됨 (`backend/app/agents/executor.py`)
+- `GET/POST /api/v1/mcp/servers`, `DELETE /api/v1/mcp/servers/{id}`, `POST /api/v1/mcp/servers/{id}/test`, `GET /api/v1/mcp/servers/{id}/tools`, `GET/PUT /api/v1/mcp/agents/{agent_id}/tools`
+- `frontend/app/mcp/page.tsx` — MCP 서버 등록/테스트/도구 연결 UI
+
+### 트리거 (스케줄/이벤트/웹훅) + 훅
+- `backend/app/services/trigger_service.py` — 커스텀 5필드 cron 파서로 `schedule` 트리거 평가(60초 주기, `app/main.py:_cron_scheduler`), `event` 트리거(특정 에이전트 실행 완료/실패 시 발동), `webhook` 트리거(랜덤 토큰 발급, 외부에서 `POST /api/v1/webhooks/{token}` 호출 시 연결된 에이전트 실행)
+- `backend/app/services/hook_service.py` — 에이전트 실행 생명주기 훅(`before_run`/`after_run`/`on_error`), `notify` 액션으로 사용자 지정 URL에 웹훅 발송(`{{key}}` 템플릿 치환 지원)
+- `GET/POST /api/v1/triggers/`, `PATCH/DELETE /api/v1/triggers/{id}`, `POST /api/v1/triggers/{id}/fire`, `POST /api/v1/webhooks/{token}`, `GET/POST /api/v1/hooks/`, `PATCH/DELETE /api/v1/hooks/{id}`
+
+### 에이전트 스튜디오 (Agent Studio)
+- `frontend/components/AgentStudio.tsx` + `frontend/app/studio/{page.tsx, new/page.tsx, [agentId]/page.tsx}` — 시스템 프롬프트, 도구, MCP 연결을 한 화면에서 편집하는 고급 에이전트 편집기
+
+### 워크플로 → 에이전트 변환
+- `POST /api/v1/workflows/{id}/save-as-agent` — 워크플로를 단일 팀 에이전트로 저장(`AgentORM.source_workflow_id` 설정), 이후 `/agents/{id}/run` 호출 시 `executor._execute_team_agent()`가 `workflow_executor.execute_workflow()`로 투명하게 위임
