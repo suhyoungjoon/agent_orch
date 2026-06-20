@@ -37,10 +37,25 @@ async def list_agents(
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
-async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+async def get_agent(
+    agent_id: str,
+    current_user: UserORM | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     agent = await AgentRepository(db).get_by_id(agent_id)
     if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    if agent.visibility == "public":
+        return agent
+
+    # team / private: 같은 팀이거나 전체 admin만 접근 가능
+    is_admin = bool(current_user and current_user.role == "admin")
+    is_same_team = bool(current_user and current_user.team_id == agent.team_id)
+
+    if not is_admin and not is_same_team:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
     return agent
 
 
@@ -85,12 +100,16 @@ async def create_agent(
 async def update_agent(
     agent_id: str,
     body: AgentUpdate,
-    _: UserORM = Depends(require_admin),
+    current_user: UserORM = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     repo = AgentRepository(db)
-    if not await repo.get_by_id(agent_id):
+    agent = await repo.get_by_id(agent_id)
+    if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    if current_user.team_id != agent.team_id:
+        raise HTTPException(403, "다른 팀의 에이전트는 수정할 수 없습니다.")
 
     updates = body.model_dump(exclude_none=True)
     if not updates:
@@ -101,12 +120,17 @@ async def update_agent(
 @router.delete("/{agent_id}", status_code=204)
 async def delete_agent(
     agent_id: str,
-    _: UserORM = Depends(require_admin),
+    current_user: UserORM = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     repo = AgentRepository(db)
-    if not await repo.get_by_id(agent_id):
+    agent = await repo.get_by_id(agent_id)
+    if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    if current_user.team_id != agent.team_id:
+        raise HTTPException(403, "다른 팀의 에이전트는 삭제할 수 없습니다.")
+
     await repo.delete(agent_id)
 
 

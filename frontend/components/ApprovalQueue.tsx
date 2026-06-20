@@ -32,8 +32,11 @@ export default function ApprovalQueue() {
 
   // Also listen on SSE stream for real-time pending_approval events
   useEffect(() => {
+    const token = session?.user?.accessToken;
+    if (!token) return; // 인증 전에는 연결하지 않음 (서버가 401로 거부함)
     const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    const es = new EventSource(`${base}/api/v1/runs/stream`);
+    // EventSource는 커스텀 Authorization 헤더를 보낼 수 없어 토큰을 쿼리 파라미터로 전달한다.
+    const es = new EventSource(`${base}/api/v1/runs/stream?token=${encodeURIComponent(token)}`);
     es.onmessage = (e) => {
       try {
         const run = JSON.parse(e.data);
@@ -52,7 +55,7 @@ export default function ApprovalQueue() {
       }
     };
     return () => es.close();
-  }, []);
+  }, [session?.user?.accessToken]);
 
   if (!isAdmin) return null;
   if (runs.length === 0) return null;

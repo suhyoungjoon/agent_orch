@@ -86,6 +86,7 @@ async def list_credentials(
     return list(result.scalars().all())
 
 
+# TODO: 미사용 — 어떤 엔드포인트도 이 함수로 인증을 검증하지 않음. API 키 발급/폐기 기능은 구현되어 있으나 실제 인증 강제(enforcement)는 미구현 상태.
 async def authenticate_agent(db: AsyncSession, raw_key: str) -> AgentCredentialORM | None:
     """API 키로 자격증명 검증. 유효하면 last_used_at 갱신."""
     prefix = raw_key[:10]

@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.tools import SSRFBlockedError, validate_outbound_url
 from app.db.models.mcp_server_orm import MCPServerORM
 from app.db.models.agent_mcp_tool_orm import AgentMCPToolORM
 
@@ -30,8 +31,16 @@ def _jsonrpc(method: str, params: dict | None = None, req_id: int = 1) -> dict:
 
 
 async def _post(endpoint: str, payload: dict) -> dict:
-    """MCP 서버에 JSON-RPC 요청을 보내고 result를 반환한다."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    """MCP 서버에 JSON-RPC 요청을 보내고 result를 반환한다.
+
+    사용자가 임의의 endpoint URL을 등록할 수 있으므로(SSRF 위험), 요청 전에
+    fetch_webpage와 동일한 SSRF 방어 검증(validate_outbound_url)을 거친다.
+    redirect는 따르지 않는다(follow_redirects=False) — MCP 서버 endpoint가
+    내부 IP로 리다이렉트하는 우회를 막기 위함이며, 정상적인 MCP 서버는
+    리다이렉트를 사용하지 않으므로 기능상 제약은 없다.
+    """
+    validate_outbound_url(endpoint)
+    async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False) as client:
         resp = await client.post(
             endpoint,
             json=payload,

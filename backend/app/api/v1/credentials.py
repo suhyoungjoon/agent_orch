@@ -1,4 +1,10 @@
-"""에이전트 신원·권한 관리 API."""
+"""에이전트 신원·권한 관리 API.
+
+주의: 이 API는 API 키 발급/조회/폐기만 담당하며, 발급된 키로 실제 요청을
+인증하는 enforcement 로직(credential_service.authenticate_agent 호출)은
+어떤 엔드포인트에도 연결되어 있지 않다. scopes는 현재 UI 표시 용도일 뿐
+실질적인 접근 제어 경계로 동작하지 않는다.
+"""
 from typing import Optional
 from datetime import datetime
 

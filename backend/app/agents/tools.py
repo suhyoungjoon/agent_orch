@@ -4,11 +4,14 @@
 외부 API 키 없이 동작하는 툴만 기본 포함.
 """
 import ast
+import ipaddress
 import math
 import operator
 import json
+import socket
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -58,18 +61,75 @@ def _get_datetime() -> str:
     return now.strftime("%Y년 %m월 %d일 %H:%M UTC (%A)")
 
 
+# ── SSRF 방어: 외부 요청 전 URL/IP 검증 ───────────────────────────────
+class SSRFBlockedError(Exception):
+    """차단 대상 URL(사설/루프백/링크로컬 IP 등)에 대한 요청 시도."""
+
+
+def validate_outbound_url(url: str) -> None:
+    """외부로 나가는 HTTP 요청 URL이 안전한지 검증한다.
+
+    - scheme이 http/https인지 확인
+    - hostname을 resolve한 IP가 사설/루프백/링크로컬 대역이면 차단
+      (클라우드 메타데이터 엔드포인트 169.254.169.254, localhost, 내부망 등)
+
+    SSRF가 우려되는 모든 외부 요청(fetch_webpage, MCP 서버 호출) 직전에
+    호출해야 한다. 차단 시 SSRFBlockedError를 던진다.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SSRFBlockedError(f"허용되지 않는 scheme: {parsed.scheme!r} (http/https만 허용)")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise SSRFBlockedError("URL에 hostname이 없습니다.")
+
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as e:
+        raise SSRFBlockedError(f"hostname을 resolve할 수 없습니다: {e}")
+
+    for family, _, _, _, sockaddr in addr_infos:
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise SSRFBlockedError(
+                f"내부망/사설 IP({ip_str})로의 요청은 차단됩니다 (SSRF 방지)."
+            )
+
+
 # ── URL 페이지 내용 가져오기 ─────────────────────────────────────────
+_MAX_REDIRECTS = 5
+
+
 async def _fetch_webpage(url: str) -> str:
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, follow_redirects=True,
-                                    headers={"User-Agent": "Mozilla/5.0 AgentFlow/1.0"})
-            text = resp.text
-            # 태그 제거 및 길이 제한
-            import re
-            text = re.sub(r"<[^>]+>", " ", text)
-            text = re.sub(r"\s+", " ", text).strip()
-            return text[:3000] + ("..." if len(text) > 3000 else "")
+        # follow_redirects=True를 쓰지 않고 직접 리다이렉트를 따라가며
+        # 매 hop마다 validate_outbound_url()을 재호출한다.
+        # (공개 URL이 3xx로 내부 IP를 가리키는 SSRF 우회를 방지)
+        current_url = url
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                validate_outbound_url(current_url)
+                resp = await client.get(
+                    current_url,
+                    headers={"User-Agent": "Mozilla/5.0 AgentFlow/1.0"},
+                )
+                if resp.is_redirect:
+                    location = resp.headers.get("location")
+                    if not location:
+                        break
+                    current_url = urljoin(current_url, location)
+                    continue
+                text = resp.text
+                # 태그 제거 및 길이 제한
+                import re
+                text = re.sub(r"<[^>]+>", " ", text)
+                text = re.sub(r"\s+", " ", text).strip()
+                return text[:3000] + ("..." if len(text) > 3000 else "")
+            return "오류: 리다이렉트 횟수 초과"
+    except SSRFBlockedError as e:
+        return f"요청이 차단되었습니다: {e}"
     except Exception as e:
         return f"페이지 가져오기 오류: {e}"
 

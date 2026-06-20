@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Run } from "@/lib/api";
 import { Loader2, Play, AlertCircle } from "lucide-react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function RunHistory() {
+  const { data: session } = useSession();
   const [runMap, setRunMap] = useState<Map<string, Run>>(new Map());
   const [connecting, setConnecting] = useState(true);
   const [connError, setConnError] = useState(false);
 
   useEffect(() => {
-    const es = new EventSource(`${BASE_URL}/api/v1/runs/stream`);
+    const token = session?.user?.accessToken;
+    if (!token) return; // 인증 전에는 연결하지 않음 (서버가 401로 거부함)
+
+    // EventSource는 커스텀 Authorization 헤더를 보낼 수 없어 토큰을 쿼리
+    // 파라미터로 전달한다 (백엔드 GET /api/v1/runs/stream?token=...).
+    const es = new EventSource(`${BASE_URL}/api/v1/runs/stream?token=${encodeURIComponent(token)}`);
 
     es.onopen = () => { setConnecting(false); setConnError(false); };
 
@@ -29,7 +36,7 @@ export default function RunHistory() {
     };
 
     return () => es.close();
-  }, []);
+  }, [session?.user?.accessToken]);
 
   const runs = Array.from(runMap.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()

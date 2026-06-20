@@ -98,7 +98,11 @@ export default function AgentCard({ agent }: Props) {
       const base = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
         .replace(/^https/, "wss")
         .replace(/^http/, "ws");
-      const ws = new WebSocket(`${base}/api/v1/runs/${initial.run_id}/ws`);
+      // WebSocket은 커스텀 Authorization 헤더를 보낼 수 없어 토큰을 쿼리 파라미터로 전달한다.
+      const wsUrl = token
+        ? `${base}/api/v1/runs/${initial.run_id}/ws?token=${encodeURIComponent(token)}`
+        : `${base}/api/v1/runs/${initial.run_id}/ws`;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onmessage = (e) => {
